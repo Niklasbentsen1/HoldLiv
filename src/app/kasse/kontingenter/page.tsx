@@ -88,8 +88,18 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
                     <input name="amount" defaultValue={krInput(f.amountOre)} inputMode="decimal" required />
                   </label>
                 </div>
+                <label>
+                  Betales
+                  <select name="interval" defaultValue={f.interval}>
+                    {INTERVALS.map(([k, label]) => (
+                      <option key={k} value={k}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button>Gem</button>
-                <p className="muted small">Et nyt beløb gælder kommende opkrævninger. Allerede sendte opkrævninger ændres ikke.</p>
+                <p className="muted small">Ændringer gælder kommende opkrævninger. Allerede sendte opkrævninger ændres ikke.</p>
               </form>
               <form action={editFee}>
                 <input type="hidden" name="clubId" value={club.id} />

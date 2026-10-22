@@ -133,6 +133,14 @@ describe("kassereren Sofie", () => {
     expect(old.amountOre).toBe(110000);
   });
 
+  it("foreningen bestemmer selv navn, beløb og interval på alle satser", async () => {
+    const ctx = await ctxOf("sofie");
+    const fee = await createFee(db, ctx, demo.club.id, { name: "Motion", amountOre: 30000, interval: "quarter" });
+    const updated = await updateFee(db, ctx, fee.id, { name: "Motion og fitness", amountOre: 125050, interval: "year" });
+    expect(updated).toMatchObject({ name: "Motion og fitness", amountOre: 125050, interval: "year" });
+    await expect(updateFee(db, await ctxOf("mette"), fee.id, { amountOre: 1 })).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
   it("udmeldte og gratister kommer ikke med i næste kørsel", async () => {
     const ctx = await ctxOf("sofie");
     await updateMembership(db, ctx, demo.club.id, demo.users.henrik.profile.id, { status: "inactive" });

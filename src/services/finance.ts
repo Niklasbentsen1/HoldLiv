@@ -121,8 +121,8 @@ async function loadFee(db: Db, feeId: string) {
   return fee;
 }
 
-/** Ændringer gælder kommende opkrævninger. Allerede udsendte opkrævninger beholder deres beløb. */
-export async function updateFee(db: Db, ctx: AccessContext, feeId: string, patch: Partial<Pick<FeeInput, "name" | "amountOre">>) {
+/** Navn, beløb og interval kan altid ændres. Det gælder kommende opkrævninger; udsendte beholder deres beløb. */
+export async function updateFee(db: Db, ctx: AccessContext, feeId: string, patch: Partial<FeeInput>) {
   const fee = await loadFee(db, feeId);
   assertCan(ctx, { action: "finance.manage", clubId: fee.clubId });
   checkFee(patch);

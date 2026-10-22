@@ -290,7 +290,11 @@ export async function editFee(formData: FormData) {
   await attempt(back, async () => {
     const feeId = str(formData, "feeId");
     if (formData.has("archive")) return setFeeArchived(db, ctx, feeId, str(formData, "archive") === "1");
-    await updateFee(db, ctx, feeId, { name: str(formData, "name"), amountOre: parseKr(str(formData, "amount")) });
+    await updateFee(db, ctx, feeId, {
+      name: str(formData, "name"),
+      amountOre: parseKr(str(formData, "amount")),
+      interval: str(formData, "interval") as FeeInterval,
+    });
   });
   revalidatePath("/kasse/kontingenter");
 }
