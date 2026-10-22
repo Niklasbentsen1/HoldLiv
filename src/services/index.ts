@@ -271,3 +271,4 @@ export * from "./tasks";
 export * from "./fines";
 export * from "./notifications";
 export * from "./calendarFeed";
+export * from "./chat";

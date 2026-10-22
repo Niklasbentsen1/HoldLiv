@@ -11,7 +11,7 @@ import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { eventResponses, events, guardianships, notificationPrefs, notifications, profiles, pushSubscriptions, sessions, teamMembers, teams, users } from "../db/schema";
 import { isMinor, type AccessContext } from "../auth/permissions";
-import { CHANNELS, DEFAULT_ENABLED, KINDS, type Channel, type Kind } from "../lib/notify";
+import { CHANNELS, KINDS, defaultEnabled, type Channel, type Kind } from "../lib/notify";
 import { normalizePhone, type SmsSender } from "../lib/sms";
 import type { Mailer } from "../lib/mail";
 import { PushGoneError, type PushSender } from "../lib/push";
@@ -38,7 +38,7 @@ export async function getNotificationPrefs(db: Db, userId: string) {
   for (const kind of Object.keys(KINDS) as Kind[]) {
     matrix[kind] = {} as Record<Channel, boolean>;
     for (const channel of CHANNELS) {
-      matrix[kind][channel] = rows.find((r) => r.kind === kind && r.channel === channel)?.enabled ?? DEFAULT_ENABLED[channel];
+      matrix[kind][channel] = rows.find((r) => r.kind === kind && r.channel === channel)?.enabled ?? defaultEnabled(kind, channel);
     }
   }
   return { prefs: matrix, phone: profile?.phone ?? null, hasValidPhone: !!(profile?.phone && normalizePhone(profile.phone)) };
@@ -60,7 +60,7 @@ export async function setNotificationPref(db: Db, ctx: AccessContext, kind: stri
 
 // --- Modtagere ---
 
-interface Recipient {
+export interface Recipient {
   userId: string;
   email: string;
   phone: string | null;
@@ -124,7 +124,7 @@ export async function notifyUsers(db: Db, deliver: Deliver, recipients: Recipien
 
   for (const r of recipients) {
     for (const channel of CHANNELS) {
-      const enabled = prefsRows.find((p) => p.userId === r.userId && p.channel === channel)?.enabled ?? DEFAULT_ENABLED[channel];
+      const enabled = prefsRows.find((p) => p.userId === r.userId && p.channel === channel)?.enabled ?? defaultEnabled(msg.kind, channel);
       if (!enabled) continue;
       const userSubs = channel === "push" ? subs.filter((x) => x.userId === r.userId) : [];
       if (channel === "push" && userSubs.length === 0) continue; // ingen browsere at sende til, så ingen post

@@ -5,6 +5,12 @@ export type Channel = (typeof CHANNELS)[number];
 export const CHANNEL_LABEL: Record<Channel, string> = { mail: "Mail", push: "Push i browseren", sms: "SMS" };
 
 export const KINDS = {
+  chat: {
+    label: "Nye beskeder i holdchatten",
+    description: "Højst én besked pr. samtale hvert tiende minut, så du ikke bliver overdænget.",
+    // Chat er mange små beskeder, så mail er fra som standard.
+    defaults: { mail: false },
+  },
   event_change: {
     label: "Ændringer og aflysninger",
     description: "Når en træning eller kamp bliver aflyst, flyttet eller får nyt sted.",
@@ -22,3 +28,9 @@ export type Kind = keyof typeof KINDS;
 
 /** Mail og push er slået til som standard (push sendes kun til browsere, der har sagt ja). SMS er opt-in, fordi det koster penge og kræver et telefonnummer. */
 export const DEFAULT_ENABLED: Record<Channel, boolean> = { mail: true, push: true, sms: false };
+
+/** Standard for en kanal og slags besked, før man selv har valgt. */
+export function defaultEnabled(kind: Kind, channel: Channel): boolean {
+  const own = (KINDS[kind] as { defaults?: Partial<Record<Channel, boolean>> }).defaults?.[channel];
+  return own ?? DEFAULT_ENABLED[channel];
+}
