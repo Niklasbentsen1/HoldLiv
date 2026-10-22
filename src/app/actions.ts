@@ -19,6 +19,7 @@ import {
   rotateInviteCode,
   setEventCancelledNotifying,
   removePushSubscription,
+  resetFeedToken,
   savePushSubscription,
   setNotificationPref,
   updateEventNotifying,
@@ -70,6 +71,7 @@ import { getPaymentProvider, mockPaymentsEnabled } from "../lib/payments";
 import { db } from "../lib/db";
 import { sendLoginMail, sendMail } from "../lib/mail";
 import { CHANNELS, KINDS } from "../lib/notify";
+import { origin } from "../lib/origin";
 import { getPushSender } from "../lib/push";
 import { getSmsSender } from "../lib/sms";
 import { SESSION_COOKIE, endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
@@ -95,14 +97,6 @@ async function deliverFromEnv() {
 }
 
 // --- Login ---
-
-async function origin() {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 export async function requestLoginAction(formData: FormData) {
   const next = safeNext(str(formData, "next"));
@@ -576,5 +570,11 @@ export async function subscribePush(sub: { endpoint: string; p256dh: string; aut
 export async function unsubscribePush(endpoint: string) {
   const { ctx } = await requireSession();
   await removePushSubscription(db, ctx, endpoint);
+  revalidatePath("/indstillinger");
+}
+
+export async function resetCalendarLink() {
+  const { ctx } = await requireSession();
+  await resetFeedToken(db, ctx);
   revalidatePath("/indstillinger");
 }

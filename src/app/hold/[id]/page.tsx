@@ -85,7 +85,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
           {events.length === 0 && <Empty>Ingen aktiviteter de næste {WEEKS_AHEAD} uger.</Empty>}
           <ul className="events">
             {events.map((e) => {
-              const none = Math.max(0, playerCount - e.yes - e.maybe - e.no);
+              const none = Math.max(0, playerCount - e.yesAll - e.maybe - e.no);
               const pct = (n: number) => `${playerCount ? (n / playerCount) * 100 : 0}%`;
               return (
                 <li key={e.id}>

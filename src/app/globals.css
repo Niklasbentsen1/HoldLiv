@@ -156,8 +156,8 @@ details[open] summary { margin-bottom: 10px; }
 /* Mærker */
 .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 650; padding: 4px 10px 4px 8px; border-radius: var(--r-pill); }
 .badge.training { background: var(--training-soft); color: var(--training); }
-.badge.match { background: var(--match-soft); color: var(--match); }
-.badge.other { background: var(--other-soft); color: var(--other); }
+.badge.match, .badge.tournament { background: var(--match-soft); color: var(--match); }
+.badge.other, .badge.social { background: var(--other-soft); color: var(--other); }
 .hero .badge { background: var(--feature-2); color: var(--on-feature); }
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 650; padding: 4px 10px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--muted); }
 .pill.cancel { background: var(--no-soft); color: var(--no); }
@@ -172,8 +172,8 @@ details[open] summary { margin-bottom: 10px; }
 .dt-d { font-size: 24px; font-weight: 750; margin: 3px 0 2px; letter-spacing: -0.03em; }
 .dt-m { font-size: 11px; color: var(--muted); }
 .date-tile.training { background: var(--training-soft); }
-.date-tile.match { background: var(--match-soft); }
-.date-tile.other { background: var(--other-soft); }
+.date-tile.match, .date-tile.tournament { background: var(--match-soft); }
+.date-tile.other, .date-tile.social { background: var(--other-soft); }
 
 /* Sidehoved */
 .page-head { margin: 4px 0 22px; display: grid; gap: 14px; }
@@ -276,8 +276,8 @@ details[open] summary { margin-bottom: 10px; }
 .wd.today .l { color: var(--on-feature-muted); }
 .wd.today .dots i { background: var(--on-brand); }
 i.training, .dot.training { background: var(--training); }
-i.match, .dot.match { background: var(--match); }
-i.other, .dot.other { background: var(--other); }
+i.match, .dot.match, i.tournament, .dot.tournament { background: var(--match); }
+i.other, .dot.other, i.social, .dot.social { background: var(--other); }
 
 /* Aktivitetskort */
 .day-label { font-size: 13.5px; font-weight: 650; color: var(--muted); margin: 18px 4px 10px; text-transform: none; }

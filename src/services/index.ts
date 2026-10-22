@@ -151,7 +151,7 @@ export async function removeTeamMember(
 }
 
 export interface EventInput {
-  type: "training" | "match" | "other";
+  type: "training" | "match" | "tournament" | "social" | "other";
   title: string;
   startsAt: Date;
   endsAt?: Date | null;
@@ -270,3 +270,4 @@ export * from "./carpool";
 export * from "./tasks";
 export * from "./fines";
 export * from "./notifications";
+export * from "./calendarFeed";
