@@ -127,6 +127,13 @@
       "when": 1792689585755,
       "tag": "0017_gdpr",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792690075066,
+      "tag": "0018_mobil",
+      "breakpoints": true
     }
   ]
 }

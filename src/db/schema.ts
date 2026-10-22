@@ -597,6 +597,24 @@ export const pushSubscriptions = pgTable(
 );
 
 // Hemmeligt link til telefonens kalender. Den, der kender linket, kan se aktiviteterne, så det kan nulstilles.
+// Mobilappens push-adresser (Expo). Bundet til sessionen, så de forsvinder ved logud og udløb, som browserens push.
+export const deviceTokens = pgTable(
+  "device_tokens",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    platform: text("platform").notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("device_tokens_user_idx").on(t.userId)],
+);
+
 export const calendarFeeds = pgTable("calendar_feeds", {
   userId: uuid("user_id")
     .primaryKey()
