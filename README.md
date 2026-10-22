@@ -142,7 +142,9 @@ npm test                      # kræver en tom testdatabase, se TEST_DATABASE_UR
 
 Miljøvariabler: `DATABASE_URL`, `RESEND_API_KEY` og `MAIL_FROM` (rigtige mails), `APP_URL` (adressen i login-links), `DEMO_LOGIN=1` (demo-login, kode på skærmen og testbetaling i produktion), `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET` (rigtige betalinger), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` og `VAPID_SUBJECT` (push i browseren; lav nøgler med `npx web-push generate-vapid-keys`, uden dem bruges en mock udenfor produktion), `CRON_SECRET` (til påmindelser), `SMS_PROVIDER=mock` (SMS skrives i loggen i stedet for at blive sendt; uden udbyder springes SMS over i produktion).
 
-Beskeder: ændringer og aflysninger af aktiviteter sendes som mail (og SMS, hvis man har valgt det) til spilleren selv og til forældre til børn under 18. Hver person vælger kanaler under `/indstillinger`. Påmindelser om ubesvarede aktiviteter sendes et døgn før svarfristen (eller før starten) af `GET/POST /api/cron/paaminde` med `Authorization: Bearer $CRON_SECRET`; kald den fx hvert kvarter, hver besked sendes kun én gang. Alle forsøg gemmes i tabellen `notifications`, og en fejl hos udbyderen afviser aldrig selve ændringen.
+Beskeder: ændringer og aflysninger af aktiviteter sendes som mail (og SMS, hvis man har valgt det) til spilleren selv og til forældre til børn under 18. Hver person vælger kanaler under `/indstillinger`. Holdchat er et modul, foreningen slår til pr. hold. Grupperne (hele holdet, trænere, trænere og forældre) og aktivitetens egen chat regnes automatisk ud fra holdets trænere, spillere og forældre. Børn har intet login og er aldrig med; foreningens admin er ikke med automatisk. Nye beskeder giver push (mail er fra som standard), højst én pr. samtale hvert tiende minut.
+
+Påmindelser om ubesvarede aktiviteter sendes et døgn før svarfristen (eller før starten) af `GET/POST /api/cron/paaminde` med `Authorization: Bearer $CRON_SECRET`; kald den fx hvert kvarter, hver besked sendes kun én gang. Alle forsøg gemmes i tabellen `notifications`, og en fejl hos udbyderen afviser aldrig selve ændringen.
 
 ## Ikke med endnu
 

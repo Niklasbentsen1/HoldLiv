@@ -81,7 +81,7 @@ describe("beskeder", () => {
     const chat = await getChat(db, await ctxOf("sofie"), t);
     expect(chat.messages.map((m) => [m.authorName, m.authorLabel])).toEqual([
       ["Mette Holm", "Træner"],
-      ["Niklas Kærbo Bentsen", "Forælder til Emma"],
+      ["Niklas Bentsen", "Forælder til Emma"],
     ]);
     expect((await listChats(db, await ctxOf("sofie"), u9())).find((c) => c.kind === "all")!.unread).toBe(0);
   });

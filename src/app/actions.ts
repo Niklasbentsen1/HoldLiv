@@ -18,6 +18,8 @@ import {
   respondToEventNotifying,
   rotateInviteCode,
   setEventCancelledNotifying,
+  deleteMessage,
+  postMessage,
   removePushSubscription,
   resetFeedToken,
   savePushSubscription,
@@ -577,4 +579,22 @@ export async function resetCalendarLink() {
   const { ctx } = await requireSession();
   await resetFeedToken(db, ctx);
   revalidatePath("/indstillinger");
+}
+
+// --- Holdchat ---
+
+export async function postChatMessageAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const threadId = str(formData, "threadId");
+  const back = `/hold/${str(formData, "teamId")}/chat?samtale=${threadId}`;
+  await attempt(back, async () => postMessage(db, ctx, await deliverFromEnv(), threadId, String(formData.get("body") ?? "")));
+  redirect(back);
+}
+
+export async function deleteChatMessageAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const threadId = str(formData, "threadId");
+  const back = `/hold/${str(formData, "teamId")}/chat?samtale=${threadId}`;
+  await attempt(back, () => deleteMessage(db, ctx, str(formData, "messageId")));
+  redirect(back);
 }

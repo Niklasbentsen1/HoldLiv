@@ -490,3 +490,13 @@ a.kpi:hover { box-shadow: var(--shadow-lift); }
 a.chip { text-decoration: none; display: inline-flex; align-items: center; padding: 9px 16px; }
 .chips + .inline, .chips + form { margin-top: 14px; }
 .content > :is(.card, .people, .events, .actions, form, details, .test-banner, p) + :is(.card, .people, .events, .actions, form, details, .test-banner, p) { margin-top: 12px; }
+
+/* Holdchat */
+.chat-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.chat-msg { display: flex; gap: 10px; align-items: flex-start; }
+.chat-bubble { background: var(--surface-2); border-radius: var(--r-md); padding: 10px 14px; max-width: min(640px, 100%); min-width: 0; }
+.chat-msg.mine .chat-bubble { background: var(--brand-soft, var(--surface-2)); }
+.chat-text { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-form textarea { width: 100%; }
+.link-button { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.chat-link, .chat-link:hover { text-decoration: none; color: inherit; }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getEventDetail } from "../../../services";
+import { eventChatVisible, getEventDetail } from "../../../services";
 import { db } from "../../../lib/db";
 import { requireSession } from "../../../lib/session";
 import { STATUS_LABEL, dayHeading, time, when } from "../../../lib/format";
@@ -15,6 +15,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const { fejl } = await searchParams;
   const { ctx } = await requireSession(`/aktivitet/${id}`);
   const e = await getEventDetail(db, ctx, id);
+  const hasChat = await eventChatVisible(db, ctx, id);
   const back = `/aktivitet/${id}`;
   const mine = e.players.filter((p) => p.mine);
   const cancelled = !!e.cancelledAt;
@@ -94,6 +95,13 @@ export default async function EventPage({ params, searchParams }: { params: Prom
               )}
             </div>
             {e.description && <p className="description">{e.description}</p>}
+            {hasChat && (
+              <p>
+                <Link href={`/hold/${e.teamId}/chat?aktivitet=${id}`} className="button">
+                  <Icon name="bell" size={16} /> Snak om aktiviteten
+                </Link>
+              </p>
+            )}
             {!cancelled &&
               mine.map((p) => (
                 <div key={p.profileId} className="stack" style={{ gap: 0 }}>
