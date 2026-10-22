@@ -35,6 +35,13 @@ import {
   setFeeArchived,
   setTeamDefaultFee,
   saveModuleMatrix as saveModules,
+  bookSeat,
+  cancelOffer,
+  cancelRideRequest,
+  leaveSeat,
+  offerRide,
+  requestRide,
+  updateOffer,
   updateModuleConfig,
   startCheckout,
   updateFee,
@@ -229,6 +236,38 @@ export async function saveModuleConfig(formData: FormData) {
   revalidatePath(`/hold/${teamId}`);
   redirect(`/hold/${teamId}/moduler`);
 }
+
+// --- Samkørsel ---
+
+function offerInput(formData: FormData) {
+  const departs = str(formData, "departsAt");
+  return {
+    seats: Number(str(formData, "seats")),
+    meetingPoint: str(formData, "meetingPoint"),
+    departsAt: departs ? parseLocalDateTime(departs) : null,
+    note: opt(formData, "note"),
+  };
+}
+
+/** Kører en samkørselshandling og sender tilbage til holdets samkørselsside. */
+async function carpool(formData: FormData, fn: (ctx: Awaited<ReturnType<typeof requireSession>>["ctx"]) => Promise<unknown>) {
+  const { ctx } = await requireSession();
+  const teamId = str(formData, "teamId");
+  const back = `/hold/${teamId}/samkorsel`;
+  await attempt(`${back}#e${str(formData, "eventId")}`, () => fn(ctx));
+  revalidatePath(back);
+  redirect(`${back}#e${str(formData, "eventId")}`);
+}
+
+export const offerRideAction = async (f: FormData) => carpool(f, (ctx) => offerRide(db, ctx, str(f, "eventId"), offerInput(f)));
+export const updateOfferAction = async (f: FormData) => carpool(f, (ctx) => updateOffer(db, ctx, str(f, "offerId"), offerInput(f)));
+export const cancelOfferAction = async (f: FormData) => carpool(f, (ctx) => cancelOffer(db, ctx, str(f, "offerId")));
+export const bookSeatAction = async (f: FormData) => carpool(f, (ctx) => bookSeat(db, ctx, str(f, "offerId"), str(f, "profileId")));
+export const leaveSeatAction = async (f: FormData) => carpool(f, (ctx) => leaveSeat(db, ctx, str(f, "offerId"), str(f, "profileId")));
+export const requestRideAction = async (f: FormData) =>
+  carpool(f, (ctx) => requestRide(db, ctx, str(f, "eventId"), str(f, "profileId"), opt(f, "note")));
+export const cancelRideRequestAction = async (f: FormData) =>
+  carpool(f, (ctx) => cancelRideRequest(db, ctx, str(f, "eventId"), str(f, "profileId")));
 
 // --- Kalender ---
 
