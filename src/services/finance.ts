@@ -282,7 +282,7 @@ export async function updateMembership(db: Db, ctx: AccessContext, clubId: strin
 export const csvCell = (v: unknown) => {
   const s = v === null || v === undefined ? "" : String(v);
   // Semikolon, fordi dansk Excel bruger det som skilletegn. Formler neutraliseres.
-  const safe = /^[=+\-@]/.test(s) ? `'${s}` : s;
+  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
   return /[;"\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 

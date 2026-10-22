@@ -286,6 +286,7 @@ export * from "./calendar";
 export * from "./finance";
 export * from "./autocharge";
 export * from "./expenses";
+export * from "./camps";
 export * from "./modules";
 export * from "./carpool";
 export * from "./tasks";

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { listMyCharges, listMySavedCards } from "../../services";
 import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
@@ -21,6 +22,10 @@ export default async function Payments({ searchParams }: { searchParams: Promise
     <Shell ctx={ctx} active="/betaling">
       <PageHead title="Betaling" sub={`Kontingent og andre opkrævninger fra foreningen${many ? " for dig og dine børn" : ""}.`} />
       <ErrorBox message={fejl} />
+
+      <p className="small">
+        <Link href="/camps">Camps og arrangementer</Link> · <Link href="/udlaeg">Udlæg og kørsel</Link>
+      </p>
 
       <h2>Skal betales</h2>
       {open.length === 0 && <p className="muted">Du har ingen ubetalte opkrævninger.</p>}
