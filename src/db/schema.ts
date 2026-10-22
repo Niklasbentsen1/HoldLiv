@@ -334,3 +334,62 @@ export const teamModules = pgTable(
   },
   (t) => [primaryKey({ columns: [t.teamId, t.module] })],
 );
+
+// --- Samkørsel (modul "carpool") ---
+
+// En fører tilbyder pladser til én aktivitet. seats er pladser til andre end føreren selv.
+export const carpoolOffers = pgTable(
+  "carpool_offers",
+  {
+    id: id(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    driverProfileId: uuid("driver_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    seats: integer("seats").notNull(),
+    meetingPoint: text("meeting_point").notNull(),
+    departsAt: timestamp("departs_at", { withTimezone: true }),
+    note: text("note"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("carpool_offers_event_driver_unique").on(t.eventId, t.driverProfileId)],
+);
+
+// Passagerer. Unik pr. aktivitet, så en spiller kun sidder i én bil.
+export const carpoolPassengers = pgTable(
+  "carpool_passengers",
+  {
+    offerId: uuid("offer_id")
+      .notNull()
+      .references(() => carpoolOffers.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    addedByUserId: uuid("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.offerId, t.profileId] }), uniqueIndex("carpool_passengers_event_profile_unique").on(t.eventId, t.profileId)],
+);
+
+// "Vi mangler en lift." Forsvinder, når spilleren får en plads.
+export const carpoolRequests = pgTable(
+  "carpool_requests",
+  {
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    note: text("note"),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.profileId] })],
+);

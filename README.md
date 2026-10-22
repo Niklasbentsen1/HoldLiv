@@ -161,3 +161,7 @@ Hvert hold har sine egne moduler (samkørsel, frugt og opgaver, bødekasse). Bes
 - Moduler har `available: false`, indtil de er bygget. Så kan de ses, men ikke slås til.
 - HoldLiv fastsætter aldrig beløb. Satser i et modul sættes af foreningens egen admin eller træner.
 - Et nyt modul: tilføj en række i registret, egne tabeller og en side under `/hold/[id]/<path>`, og kald `requireModule()` i modulets services.
+
+### Modul: samkørsel
+
+Pr. aktivitet kan voksne tilbyde pladser (mødested, afgang, besked), forældre sætter deres barn på en bil eller melder "mangler en lift", og føreren og trænere kan også sætte spillere på. Pladser tælles med lås på bilen, så ingen overbookes. Førerens nummer vises for passagererne, deres forældre og trænere; forældrenes numre vises for føreren og trænere. Kode: `src/services/carpool.ts`, side: `/hold/[id]/samkorsel`.

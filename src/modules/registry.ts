@@ -31,7 +31,7 @@ export const MODULES: Registry = {
     description: "Hvem kører, hvem mangler en lift, og hvor mødes vi. Pr. kamp eller aktivitet.",
     path: "samkorsel",
     fields: [],
-    available: false,
+    available: true,
   },
   tasks: {
     key: "tasks",
