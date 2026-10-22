@@ -71,6 +71,13 @@
       "when": 1792674957572,
       "tag": "0009_push",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792674776790,
+      "tag": "0010_venteliste",
+      "breakpoints": true
     }
   ]
 }

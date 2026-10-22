@@ -10,12 +10,33 @@ import { addLocalDays } from "../lib/time";
 import type { EventInput } from "./index";
 
 export const MAX_SERIES_LENGTH = 52;
+/** De første "kommer"-svar får plads, resten står på venteliste i den rækkefølge, de svarede. */
+export function splitYes<T extends { profileId: string; yesSince: Date | null }>(yes: T[], max: number | null) {
+  const ordered = [...yes].sort((a, b) => (a.yesSince?.getTime() ?? 0) - (b.yesSince?.getTime() ?? 0) || a.profileId.localeCompare(b.profileId));
+  return max == null ? { confirmed: ordered, waitlist: [] as T[] } : { confirmed: ordered.slice(0, max), waitlist: ordered.slice(max) };
+}
+
+/** Hvem der har en plads på aktiviteten lige nu. */
+export async function confirmedProfileIds(db: Db, eventId: string) {
+  const [e] = await db.select({ max: events.maxParticipants }).from(events).where(eq(events.id, eventId));
+  const yes = await db
+    .select({ profileId: eventResponses.profileId, yesSince: eventResponses.yesSince })
+    .from(eventResponses)
+    .where(and(eq(eventResponses.eventId, eventId), eq(eventResponses.status, "yes")));
+  return new Set(splitYes(yes, e?.max ?? null).confirmed.map((r) => r.profileId));
+}
+
+export function checkMaxParticipants(max: number | null | undefined) {
+  if (max != null && (!Number.isInteger(max) || max < 1 || max > 500)) throw new Error("Antal pladser skal være et helt tal mellem 1 og 500, eller tomt for ubegrænset.");
+}
+
 export type ResponseStatus = "yes" | "no" | "maybe";
 
 /** Fast ugentlig aktivitet, fx træning hver tirsdag kl. 17 frem til sæsonens slutning. */
 export async function createEventSeries(db: Db, ctx: AccessContext, teamId: string, input: EventInput, until: Date) {
   const team = await loadTeamFacts(db, teamId);
   assertCan(ctx, { action: "event.manage", event: team });
+  checkMaxParticipants(input.maxParticipants);
   const seriesId = randomUUID();
   const rows = [];
   for (let week = 0; week < MAX_SERIES_LENGTH; week++) {
@@ -40,6 +61,7 @@ export async function createEventSeries(db: Db, ctx: AccessContext, teamId: stri
 
 export async function updateEvent(db: Db, ctx: AccessContext, eventId: string, patch: Partial<EventInput>) {
   assertCan(ctx, { action: "event.manage", event: await loadEventFacts(db, eventId) });
+  checkMaxParticipants(patch.maxParticipants);
   const [e] = await db.update(events).set(patch).where(eq(events.id, eventId)).returning();
   return e;
 }
@@ -115,6 +137,7 @@ export async function getEventDetail(db: Db, ctx: AccessContext, eventId: string
         firstName: profiles.firstName,
         lastName: profiles.lastName,
         status: eventResponses.status,
+        yesSince: eventResponses.yesSince,
         comment: eventResponses.comment,
         respondedAt: eventResponses.respondedAt,
         respondedByUserId: eventResponses.respondedByUserId,
@@ -137,6 +160,7 @@ export async function getEventDetail(db: Db, ctx: AccessContext, eventId: string
       name: `${r.firstName} ${r.lastName}`,
       firstName: r.firstName,
       status: r.status,
+      yesSince: r.yesSince,
       mine,
       canRespond: can(ctx, {
         action: "event.respond",
@@ -150,14 +174,24 @@ export async function getEventDetail(db: Db, ctx: AccessContext, eventId: string
     };
   });
 
-  const group = (s: ResponseStatus | null) => players.filter((p) => p.status === s);
+  const { confirmed, waitlist } = splitYes(players.filter((p) => p.status === "yes"), event.event.maxParticipants);
+  const waitPos = new Map(waitlist.map((p, i) => [p.profileId, i + 1]));
+  const withQueue = players.map((p) => ({ ...p, waitlistPosition: waitPos.get(p.profileId) ?? null }));
+  const group = (s: ResponseStatus | null) => withQueue.filter((p) => p.status === s && !waitPos.has(p.profileId));
   return {
     ...event.event,
     teamName: event.teamName,
     canManage: leads,
     responsesClosed: ctx.now.getTime() >= (facts.responseDeadline ?? event.event.startsAt).getTime(),
-    players,
-    groups: { yes: group("yes"), maybe: group("maybe"), no: group("no"), none: group(null) },
+    players: withQueue,
+    spotsLeft: event.event.maxParticipants == null ? null : Math.max(0, event.event.maxParticipants - confirmed.length),
+    groups: {
+      yes: group("yes"),
+      waitlist: waitlist.map((p) => withQueue.find((w) => w.profileId === p.profileId)!),
+      maybe: group("maybe"),
+      no: group("no"),
+      none: group(null),
+    },
   };
 }
 

@@ -204,6 +204,8 @@ export const events = pgTable(
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }),
     responseDeadline: timestamp("response_deadline", { withTimezone: true }),
+    // Antal pladser. De første "kommer"-svar (efter yes_since) får plads, resten står på venteliste.
+    maxParticipants: integer("max_participants"),
     // Faste træninger oprettes som en serie af enkelte aktiviteter med samme series_id.
     seriesId: uuid("series_id"),
     // Aflyste aktiviteter bliver stående, så alle kan se at de er aflyst.
@@ -227,6 +229,8 @@ export const eventResponses = pgTable(
       .references(() => profiles.id, { onDelete: "cascade" }),
     status: responseStatus("status").notNull(),
     comment: text("comment"),
+    // Hvornår svaret blev "kommer". Bevares, når man blot ændrer beskeden, så man ikke mister sin plads i køen.
+    yesSince: timestamp("yes_since", { withTimezone: true }),
     respondedByUserId: uuid("responded_by_user_id")
       .notNull()
       .references(() => users.id),

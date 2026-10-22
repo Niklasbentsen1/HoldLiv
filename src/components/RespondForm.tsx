@@ -12,6 +12,7 @@ export function RespondForm({
   comment,
   back,
   disabled,
+  waitlistPosition,
 }: {
   eventId: string;
   profileId: string;
@@ -19,6 +20,8 @@ export function RespondForm({
   comment?: string | null;
   back: string;
   disabled?: boolean;
+  /** Placering på ventelisten, hvis svaret er "kommer", men pladserne er fyldt. */
+  waitlistPosition?: number | null;
 }) {
   return (
     <form action={respond} className="respond">
@@ -33,6 +36,7 @@ export function RespondForm({
           </button>
         ))}
       </div>
+      {waitlistPosition ? <p className="muted small">Pladserne er fyldt. Du står som nr. {waitlistPosition} på ventelisten og får besked, hvis der bliver en plads.</p> : null}
       {!disabled && (
         <details className="comment" open={!!comment}>
           <summary>{comment ? `Besked: ${comment}` : "Skriv besked til træneren"}</summary>
