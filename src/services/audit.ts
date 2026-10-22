@@ -71,6 +71,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "fee.created": "Oprettede kontingent",
   "fee.updated": "Rettede kontingent",
   "charges.run": "Kørte opkrævninger",
+  "ai.advice": "Bad om en AI-anbefaling til holdplanlægning",
   "charge.manual_payment": "Registrerede kontant betaling",
   "charge.cancelled": "Annullerede opkrævning",
   "charge.refunded": "Refunderede betaling",

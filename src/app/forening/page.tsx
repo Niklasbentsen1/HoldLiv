@@ -22,7 +22,10 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
       {clubs.map((c) => (
         <section key={c.id}>
           <PageHead kicker={<><Crest name={c.name} size={22} /> Forening</>} title={c.name} sub={`${c.teams.length} hold`} />
-          <p><Link href={`/forening/log?klub=${c.id}`} className="muted small">Se aktivitetslog</Link></p>
+          <p className="row" style={{ gap: 16 }}>
+            <Link href={`/forening/forslag?klub=${c.id}`} className="muted small">Holdforslag</Link>
+            <Link href={`/forening/log?klub=${c.id}`} className="muted small">Se aktivitetslog</Link>
+          </p>
           <ul className="team-grid">
             {c.teams.map((t) => (
               <li key={t.id}>

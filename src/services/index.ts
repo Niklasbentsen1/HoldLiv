@@ -294,5 +294,6 @@ export * from "./chat";
 export * from "./posts";
 export * from "./audit";
 export * from "./waitlist";
+export * from "./optimering";
 export * from "./gdpr";
 export * from "./mobile";

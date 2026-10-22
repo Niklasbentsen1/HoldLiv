@@ -20,6 +20,7 @@ import {
   type ConsentKind,
   createTeam,
   joinTeamByInvite,
+  adviseClub,
   leaveWaitlist,
   promoteFromWaitlist,
   removePlayerNotifying,
@@ -86,6 +87,7 @@ import { db } from "../lib/db";
 import { sendLoginMail, sendMail } from "../lib/mail";
 import { CHANNELS, KINDS } from "../lib/notify";
 import { origin } from "../lib/origin";
+import { getAdvisor } from "../lib/advisor";
 import { getDevicePushSender } from "../lib/devicePush";
 import { getPushSender } from "../lib/push";
 import { getSmsSender } from "../lib/sms";
@@ -182,6 +184,21 @@ export async function demoLogin(formData: FormData) {
   if (process.env.NODE_ENV === "production" && process.env.DEMO_LOGIN !== "1") throw new Error("Demo-login er slået fra");
   await startSession(str(formData, "userId"), { skipMfa: true });
   redirect("/");
+}
+
+// --- Holdforslag ---
+
+export async function adviceAction(_: { text?: string; error?: string }, formData: FormData): Promise<{ text?: string; error?: string }> {
+  const { ctx } = await requireSession();
+  const advisor = getAdvisor();
+  if (!advisor) return { error: "AI-rådgiveren er ikke sat op endnu." };
+  try {
+    return { text: await adviseClub(db, ctx, str(formData, "clubId"), advisor) };
+  } catch (e) {
+    if (e instanceof ForbiddenError) return { error: "Det har du ikke adgang til." };
+    console.error(e);
+    return { error: "Rådgiveren kunne ikke svare lige nu. Prøv igen om lidt." };
+  }
 }
 
 // --- Privatliv (GDPR) ---
