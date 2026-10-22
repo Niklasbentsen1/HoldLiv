@@ -4,7 +4,7 @@ import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { Shell, ErrorBox } from "../../components/Shell";
 import { Avatar, Crest, Icon, PageHead } from "../../components/ui";
-import { addTreasurer, newTeam, removeTreasurer, saveModuleMatrix } from "../actions";
+import { addTreasurer, aiServiceSettingAction, newTeam, removeTreasurer, saveModuleMatrix } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +121,20 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
                 </div>
               </form>
             )}
+          </section>
+
+          <section className="section" style={{ maxWidth: 560 }}>
+            <div className="section-head">
+              <h2>AI-hjælp til medlemmer</h2>
+            </div>
+            <p className="muted small" style={{ marginBottom: 10 }}>
+              Medlemmer kan stille spørgsmål om deres egne aktiviteter og betalinger. Svaret bygger kun på deres egne oplysninger, der sendes uden navne, og de skal selv give samtykke. Tjenesten er {c.aiServiceEnabled ? "slået til" : "slået fra"}.
+            </p>
+            <form action={aiServiceSettingAction}>
+              <input type="hidden" name="clubId" value={c.id} />
+              <input type="hidden" name="enabled" value={c.aiServiceEnabled ? "0" : "1"} />
+              <button>{c.aiServiceEnabled ? "Slå fra" : "Slå til"}</button>
+            </form>
           </section>
 
           <section className="section" style={{ maxWidth: 560 }}>

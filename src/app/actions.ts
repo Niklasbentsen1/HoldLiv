@@ -23,6 +23,8 @@ import {
   createTeam,
   joinTeamByInvite,
   adviseClub,
+  askMemberService,
+  setAiService,
   runImport,
   submitSignup,
   saveSignupSettings,
@@ -112,6 +114,7 @@ import { sendLoginMail, sendMail } from "../lib/mail";
 import { CHANNELS, KINDS } from "../lib/notify";
 import { origin } from "../lib/origin";
 import { getAdvisor } from "../lib/advisor";
+import { getAssistant } from "../lib/memberAssistant";
 import { getDevicePushSender } from "../lib/devicePush";
 import { getPushSender } from "../lib/push";
 import { getSmsSender } from "../lib/sms";
@@ -230,6 +233,29 @@ export async function adviceAction(_: { text?: string; error?: string }, formDat
     if (e instanceof ForbiddenError) return { error: "Det har du ikke adgang til." };
     console.error(e);
     return { error: "Rådgiveren kunne ikke svare lige nu. Prøv igen om lidt." };
+  }
+}
+
+// --- AI-medlemsservice ---
+
+export async function aiServiceSettingAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/forening", () => setAiService(db, ctx, str(formData, "clubId"), formData.get("enabled") === "1"));
+  revalidatePath("/forening");
+  redirect("/forening");
+}
+
+export async function memberServiceAction(_: { text?: string; error?: string }, formData: FormData): Promise<{ text?: string; error?: string }> {
+  const { ctx } = await requireSession();
+  const assistant = getAssistant();
+  if (!assistant) return { error: "AI-hjælpen er ikke sat op endnu." };
+  try {
+    return { text: await askMemberService(db, ctx, str(formData, "question"), assistant) };
+  } catch (e) {
+    if (e instanceof ForbiddenError) return { error: "Det har du ikke adgang til." };
+    if (e instanceof Error && !("cause" in e && e.cause) && !e.message.startsWith("Failed query")) return { error: e.message };
+    console.error(e);
+    return { error: "Hjælpen kunne ikke svare lige nu. Prøv igen om lidt." };
   }
 }
 

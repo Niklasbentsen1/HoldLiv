@@ -22,6 +22,7 @@ export const NAV: NavItem[] = [
   { href: "/nyheder", label: "Nyheder", icon: "star" },
   { href: "/betaling", label: "Betaling", icon: "card" },
   { href: "/udlaeg", label: "Udlæg", icon: "coins", show: (ctx) => ctx.coachTeams.size > 0 || ctx.adminClubs.size > 0 || ctx.treasurerClubs.size > 0 },
+  { href: "/hjaelp", label: "Hjælp", icon: "star" },
   { href: "/indstillinger", label: "Beskeder", icon: "bell" },
   { href: "/forening", label: "Forening", icon: "club", show: (ctx) => ctx.adminClubs.size > 0 },
   { href: "/kasse", label: "Kasse", icon: "coins", show: (ctx) => ctx.adminClubs.size > 0 || ctx.treasurerClubs.size > 0 },
