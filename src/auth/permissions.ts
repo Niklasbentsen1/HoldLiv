@@ -56,6 +56,8 @@ export type Permission =
   | { action: "team.view"; team: TeamFacts; memberProfileIds: readonly ProfileId[] }
   | { action: "team.players.manage"; team: TeamFacts }
   | { action: "team.coaches.manage"; team: TeamFacts }
+  | { action: "module.toggle"; team: TeamFacts }
+  | { action: "module.configure"; team: TeamFacts }
   | { action: "event.manage"; event: EventFacts }
   | { action: "event.respond"; event: EventFacts; profile: ProfileFacts }
   | { action: "profile.view"; profile: ProfileFacts }
@@ -92,10 +94,13 @@ export function can(ctx: AccessContext, perm: Permission): boolean {
       return isAdmin(ctx, perm.clubId) || perm.memberProfileIds.some((p) => canActAs(ctx, p));
 
     case "team.manage":
+    case "module.configure":
     case "team.players.manage":
     case "event.manage":
       return leadsTeam(ctx, "team" in perm ? perm.team : perm.event);
 
+    // Foreningen bestemmer hvilke moduler et hold har; træneren stiller indstillingerne.
+    case "module.toggle":
     case "team.coaches.manage":
       return isAdmin(ctx, perm.team.clubId);
 

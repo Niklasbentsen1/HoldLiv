@@ -34,6 +34,8 @@ import {
   sendReminders,
   setFeeArchived,
   setTeamDefaultFee,
+  saveModuleMatrix as saveModules,
+  updateModuleConfig,
   startCheckout,
   updateFee,
   updateMembership,
@@ -202,6 +204,30 @@ export async function newTeam(formData: FormData) {
     teamId = (await createTeam(db, ctx, str(formData, "clubId"), name, opt(formData, "season") ?? undefined)).id;
   });
   redirect(`/hold/${teamId}`);
+}
+
+// --- Moduler ---
+
+/** Foreningens oversigt: afkrydsningerne er den ønskede tilstand for hvert tilgængeligt modul. */
+export async function saveModuleMatrix(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/forening", async () => {
+    const desired = Object.fromEntries(
+      formData.getAll("module").map(String).map((key) => [key, formData.getAll(`on_${key}`).map(String)]),
+    );
+    await saveModules(db, ctx, str(formData, "clubId"), formData.getAll("team").map(String), desired);
+  });
+  revalidatePath("/forening");
+  redirect("/forening");
+}
+
+export async function saveModuleConfig(formData: FormData) {
+  const { ctx } = await requireSession();
+  const teamId = str(formData, "teamId");
+  const key = str(formData, "module");
+  await attempt(`/hold/${teamId}/moduler`, () => updateModuleConfig(db, ctx, teamId, key, Object.fromEntries(formData)));
+  revalidatePath(`/hold/${teamId}`);
+  redirect(`/hold/${teamId}/moduler`);
 }
 
 // --- Kalender ---

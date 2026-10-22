@@ -156,3 +156,25 @@ describe("myndighedsalder", () => {
     expect(isMinor("1990-01-01", today)).toBe(false);
   });
 });
+
+describe("moduler", () => {
+  const admin = ctx({ adminClubs: new Set([CLUB]) });
+  const coach = ctx({ coachTeams: new Set(["u9"]) });
+  const parent = ctx({ wards: new Set(["child"]) });
+  const foreignAdmin = ctx({ adminClubs: new Set([OTHER_CLUB]) });
+
+  it("kun foreningens admin slår moduler til og fra", () => {
+    expect(can(admin, { action: "module.toggle", team: U9 })).toBe(true);
+    expect(can(coach, { action: "module.toggle", team: U9 })).toBe(false);
+    expect(can(parent, { action: "module.toggle", team: U9 })).toBe(false);
+    expect(can(foreignAdmin, { action: "module.toggle", team: U9 })).toBe(false);
+  });
+
+  it("admin og holdets træner stiller indstillinger, ingen andre", () => {
+    expect(can(admin, { action: "module.configure", team: U9 })).toBe(true);
+    expect(can(coach, { action: "module.configure", team: U9 })).toBe(true);
+    expect(can(coach, { action: "module.configure", team: SENIOR })).toBe(false);
+    expect(can(parent, { action: "module.configure", team: U9 })).toBe(false);
+    expect(can(foreignAdmin, { action: "module.configure", team: U9 })).toBe(false);
+  });
+});

@@ -255,3 +255,4 @@ export async function describeRoles(db: Db, ctx: AccessContext) {
 export * from "./teams";
 export * from "./calendar";
 export * from "./finance";
+export * from "./modules";

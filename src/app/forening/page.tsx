@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { listAdminClubs, listTreasurers } from "../../services";
+import { listAdminClubs, listTreasurers, moduleMatrix } from "../../services";
 import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { Shell, ErrorBox } from "../../components/Shell";
 import { Avatar, Crest, Icon, PageHead } from "../../components/ui";
-import { addTreasurer, newTeam, removeTreasurer } from "../actions";
+import { addTreasurer, newTeam, removeTreasurer, saveModuleMatrix } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
   const { fejl } = await searchParams;
   const { ctx } = await requireSession("/forening");
   const clubs = await Promise.all(
-    (await listAdminClubs(db, ctx)).map(async (c) => ({ ...c, treasurers: await listTreasurers(db, ctx, c.id) })),
+    (await listAdminClubs(db, ctx)).map(async (c) => ({ ...c, treasurers: await listTreasurers(db, ctx, c.id), matrix: await moduleMatrix(db, ctx, c.id) })),
   );
   if (clubs.length === 0) return <Shell ctx={ctx}>Kun foreningens administratorer har adgang her.</Shell>;
 
@@ -59,6 +59,63 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
             </form>
             <p className="muted small">Træneren tilføjes bagefter på holdets side.</p>
           </details>
+
+          <section className="section">
+            <div className="section-head">
+              <h2>Moduler</h2>
+            </div>
+            <p className="muted small" style={{ marginBottom: 10 }}>
+              Vælg hvilke hold der bruger hvilke moduler. Hvert hold får kun de moduler, I slår til.
+            </p>
+            {c.matrix.teams.length > 0 && (
+              <form action={saveModuleMatrix} className="stack">
+                <input type="hidden" name="clubId" value={c.id} />
+                {c.matrix.modules.map((m) => (
+                  <input key={m.key} type="hidden" name="module" value={m.key} disabled={!m.available} />
+                ))}
+                {c.matrix.teams.map((t) => (
+                  <input key={t.id} type="hidden" name="team" value={t.id} />
+                ))}
+                <div className="card matrix-wrap">
+                  <table className="matrix">
+                    <thead>
+                      <tr>
+                        <th className="name">Hold</th>
+                        {c.matrix.modules.map((m) => (
+                          <th key={m.key} title={m.description}>
+                            {m.name}
+                            {!m.available && <span className="muted small block">Kommer snart</span>}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {c.matrix.teams.map((t) => (
+                        <tr key={t.id}>
+                          <th className="name">{t.name}</th>
+                          {c.matrix.modules.map((m) => (
+                            <td key={m.key}>
+                              <input
+                                type="checkbox"
+                                name={`on_${m.key}`}
+                                value={t.id}
+                                defaultChecked={t.enabled[m.key]}
+                                disabled={!m.available}
+                                aria-label={`${m.name} til ${t.name}`}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div>
+                  <button className="primary">Gem moduler</button>
+                </div>
+              </form>
+            )}
+          </section>
 
           <section className="section" style={{ maxWidth: 560 }}>
             <div className="section-head">
