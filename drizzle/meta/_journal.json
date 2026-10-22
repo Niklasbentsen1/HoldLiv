@@ -43,6 +43,13 @@
       "when": 1792672799154,
       "tag": "0005_opgaver",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792673137141,
+      "tag": "0006_bodekasse",
+      "breakpoints": true
     }
   ]
 }

@@ -426,3 +426,45 @@ export const teamTasks = pgTable(
     uniqueIndex("team_tasks_one_fruit_per_event").on(t.eventId).where(sql`${t.kind} = 'fruit'`),
   ],
 );
+
+// --- Bødekasse (modul "fines") ---
+
+// Holdets bødesatser, fx "For sent til træning, 10 kr." Beløbet bestemmer holdet selv; HoldLiv har ingen standardsatser.
+export const fineTypes = pgTable(
+  "fine_types",
+  {
+    id: id(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    amountOre: integer("amount_ore").notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("fine_types_team_idx").on(t.teamId)],
+);
+
+// En bøde til en spiller. Beskrivelse og beløb kopieres fra satsen, så en senere ændring af satsen ikke ændrer gamle bøder.
+export const fines = pgTable(
+  "fines",
+  {
+    id: id(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    fineTypeId: uuid("fine_type_id").references(() => fineTypes.id, { onDelete: "set null" }),
+    description: text("description").notNull(),
+    amountOre: integer("amount_ore").notNull(),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    givenByUserId: uuid("given_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    // Trukne bøder tæller ikke med, men bliver stående som historik.
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("fines_team_profile_idx").on(t.teamId, t.profileId)],
+);

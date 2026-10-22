@@ -35,6 +35,12 @@ import {
   setFeeArchived,
   setTeamDefaultFee,
   saveModuleMatrix as saveModules,
+  cancelFine,
+  createFineType,
+  giveFine,
+  setFinePaid,
+  setFineTypeArchived,
+  updateFineType,
   assignTask,
   claimTask,
   createFruitList,
@@ -304,6 +310,35 @@ export const releaseTaskAction = async (f: FormData) => tasksAction(f, (ctx) => 
 export const doneTaskAction = async (f: FormData) => tasksAction(f, (ctx) => setTaskDone(db, ctx, str(f, "taskId"), str(f, "done") === "1"));
 export const assignTaskAction = async (f: FormData) => tasksAction(f, (ctx) => assignTask(db, ctx, str(f, "taskId"), opt(f, "profileId")));
 export const deleteTaskAction = async (f: FormData) => tasksAction(f, (ctx) => deleteTask(db, ctx, str(f, "taskId")));
+
+// --- Bødekasse ---
+
+async function finesAction(formData: FormData, fn: (ctx: Awaited<ReturnType<typeof requireSession>>["ctx"]) => Promise<unknown>) {
+  const { ctx } = await requireSession();
+  const back = `/hold/${str(formData, "teamId")}/bodekasse`;
+  await attempt(back, () => fn(ctx));
+  revalidatePath(back);
+  redirect(back);
+}
+
+export const createFineTypeAction = async (f: FormData) =>
+  finesAction(f, (ctx) => createFineType(db, ctx, str(f, "teamId"), { name: str(f, "name"), amountOre: parseKr(str(f, "amount")) }));
+export const updateFineTypeAction = async (f: FormData) =>
+  finesAction(f, (ctx) => updateFineType(db, ctx, str(f, "fineTypeId"), { name: str(f, "name"), amountOre: parseKr(str(f, "amount")) }));
+export const archiveFineTypeAction = async (f: FormData) =>
+  finesAction(f, (ctx) => setFineTypeArchived(db, ctx, str(f, "fineTypeId"), str(f, "archived") === "1"));
+export const giveFineAction = async (f: FormData) =>
+  finesAction(f, (ctx) => {
+    const typeId = str(f, "fineTypeId");
+    return giveFine(db, ctx, str(f, "teamId"), {
+      profileId: str(f, "profileId"),
+      fineTypeId: typeId || null,
+      description: opt(f, "description"),
+      amountOre: typeId ? null : parseKr(str(f, "amount")),
+    });
+  });
+export const payFineAction = async (f: FormData) => finesAction(f, (ctx) => setFinePaid(db, ctx, str(f, "fineId"), str(f, "paid") === "1"));
+export const cancelFineAction = async (f: FormData) => finesAction(f, (ctx) => cancelFine(db, ctx, str(f, "fineId")));
 
 // --- Kalender ---
 

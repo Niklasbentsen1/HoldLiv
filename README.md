@@ -169,3 +169,7 @@ Pr. aktivitet kan voksne tilbyde pladser (mødested, afgang, besked), forældre 
 ### Modul: frugt og opgaver
 
 Frugtliste til kampe og træninger og opgaver som kridtning og oprydning. En opgave hører til en familie (en spiller og dennes værger; søskende på samme hold er én familie). Træneren laver frugtlister og opgaver og kan fordele dem retfærdigt: hver opgave går til den familie, der har haft færrest af samme slags (ved lighed den der længst har været uden), og familier der har meldt fra til aktiviteten springes over (`src/modules/fairness.ts`). Familier kan selv tage ledige opgaver, give dem fra sig og sætte dem som udført. Alle på holdet kan se, hvem der har haft hvad. Kode: `src/services/tasks.ts`, side: `/hold/[id]/opgaver`.
+
+### Modul: bødekasse
+
+Holdets egen bødekasse. Satserne og beløbene bestemmer holdet selv (trænere og admin); HoldLiv har ingen standardsatser. Aldersgrænsen er en indstilling pr. hold (standard 12 år, kan sættes fra 6 til 18) og tjekkes, når bøden gives: spillere under grænsen eller uden kendt fødselsdato kan ikke få bøder. Gamle bøder beholder beskrivelse og beløb, hvis satsen senere ændres. Kun trænere og admin giver bøder, sætter dem som betalt og trækker dem tilbage; betalingen sker uden for HoldLiv (kontant eller MobilePay til holdkassen). Spilleren og forældrene ser egne bøder; resten af holdet ser kun, hvor meget der er i kassen. Kode: `src/services/fines.ts`, side: `/hold/[id]/bodekasse`.

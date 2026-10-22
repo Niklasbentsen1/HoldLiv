@@ -258,3 +258,4 @@ export * from "./finance";
 export * from "./modules";
 export * from "./carpool";
 export * from "./tasks";
+export * from "./fines";
