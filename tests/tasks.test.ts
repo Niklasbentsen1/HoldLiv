@@ -176,6 +176,7 @@ describe("opgaver", () => {
     await setTeamModule(db, admin, senior, "tasks", true);
     const events = await listFruitCandidates(db, peter, senior, 12);
     expect(events.length).toBeGreaterThanOrEqual(12);
+    const mettesFruit = async () => (await listTasks(db, peter, senior)).families.find((f) => f.name.startsWith("Mette"))!.fruit;
     // Fem spillere, ti frugtdage: to hver.
     await createFruitList(db, peter, senior, events.slice(0, 10).map((e) => e.id));
     expect((await listTasks(db, peter, senior)).families.map((f) => f.fruit)).toEqual([2, 2, 2, 2, 2]);
@@ -185,6 +186,17 @@ describe("opgaver", () => {
     const fam = (await listTasks(db, peter, senior)).families;
     expect(fam.find((f) => f.name.startsWith("Mette"))!.fruit).toBe(1);
     expect(fam.map((f) => f.fruit).sort()).toEqual([1, 2, 2, 2, 2, 3]);
+    // Flere runder: hun skal ikke indhente de to, de andre havde fået. Seks nye frugtdage til seks familier
+    // giver højst to til Mette og mindst to til alle de andre.
+    for (let i = 0; i < 6; i++) {
+      await sql`insert into events(club_id, team_id, type, title, starts_at) values (${demo.club.id}, ${senior}, 'training', 'Ekstra', now() + ${`${60 + i} days`}::interval)`;
+    }
+    const more = (await listFruitCandidates(db, peter, senior, 50)).filter((e) => e.title === "Ekstra");
+    expect(more).toHaveLength(6);
+    await createFruitList(db, peter, senior, more.map((e) => e.id));
+    const after = (await listTasks(db, peter, senior)).families;
+    expect(await mettesFruit()).toBeLessThanOrEqual(3);
+    expect(after.filter((f) => !f.name.startsWith("Mette")).every((f) => f.fruit >= 3)).toBe(true);
   });
 
   it("fordeler ikke opgaver til aktiviteter der er overstået", async () => {

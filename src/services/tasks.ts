@@ -110,30 +110,33 @@ export async function deleteTask(db: Db, ctx: AccessContext, taskId: string) {
 
 /**
  * Familiernes belastning for én slags opgave: antal opgaver indtil nu og hvornår de sidst fik en.
- * En familie, der først kom på holdet efter at fordelingen var begyndt, starter ikke på nul, men på laveste
- * belastning blandt de øvrige, så den ikke får alle de næste opgaver på én gang.
+ * En familie, der først kom på holdet efter at fordelingen var begyndt, starter ikke på nul, men får en fast
+ * forskydning svarende til det færreste, de øvrige havde fået, da den kom, så den ikke skal indhente det forsømte.
  */
 async function familyLoads(db: Reader, teamId: string, kind: TaskKind, families: Family[]): Promise<FamilyLoad[]> {
   const rows = await db
     .select({ assignee: teamTasks.assigneeProfileId, assignedAt: teamTasks.assignedAt })
     .from(teamTasks)
     .where(and(eq(teamTasks.teamId, teamId), eq(teamTasks.kind, kind), sql`${teamTasks.assigneeProfileId} is not null`));
-  const loads = families.map((f) => {
-    const mine = rows.filter((r) => r.assignee && f.playerIds.includes(r.assignee));
+  const firstAssigned = Math.min(...rows.map((r) => r.assignedAt?.getTime() ?? Infinity));
+  const own = (f: Family) => rows.filter((r) => r.assignee && f.playerIds.includes(r.assignee));
+  const established = families.filter((f) => f.joinedAt <= firstAssigned);
+  return families.map((f) => {
+    const mine = own(f);
+    // Fast forskydning for en familie, der kom til efter fordelingen begyndte: det færreste antal opgaver, de øvrige
+    // familier havde fået, da den kom på holdet. Så starter den lige med dem, og indhenter ikke bagud.
+    const offset =
+      f.joinedAt > firstAssigned && established.length
+        ? Math.min(...established.map((o) => own(o).filter((r) => (r.assignedAt?.getTime() ?? 0) < f.joinedAt).length))
+        : 0;
     return {
       key: f.key,
       assigneeId: f.assigneeId,
       name: f.name,
-      load: mine.length,
+      load: mine.length + offset,
       lastAt: Math.max(0, ...mine.map((r) => r.assignedAt?.getTime() ?? 0)),
-      joinedAt: f.joinedAt,
     };
   });
-  const firstAssigned = Math.min(...rows.map((r) => r.assignedAt?.getTime() ?? Infinity));
-  const late = (l: (typeof loads)[number]) => l.load === 0 && l.joinedAt > firstAssigned;
-  const established = loads.filter((l) => !late(l));
-  const floor = established.length ? Math.min(...established.map((l) => l.load)) : 0;
-  return loads.map(({ joinedAt: _joinedAt, ...l }) => (late({ ...l, joinedAt: _joinedAt }) ? { ...l, load: floor } : l));
 }
 
 /**
