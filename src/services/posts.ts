@@ -6,7 +6,7 @@
 import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { clubMemberships, clubs, posts, profiles, teamMembers, teams } from "../db/schema";
-import { type AccessContext } from "../auth/permissions";
+import { isMinor, type AccessContext } from "../auth/permissions";
 import { notifyUsers, recipientsOfPlayers, type Deliver } from "./notifications";
 
 export type PostKind = "news" | "board";
@@ -88,6 +88,9 @@ export async function createPost(db: Db, ctx: AccessContext, deliver: Deliver, i
   if (title.length > MAX_TITLE) throw new Error(`Overskriften er for lang (højst ${MAX_TITLE} tegn).`);
   if (!body) throw new Error("Skriv en tekst.");
   if (body.length > MAX_BODY) throw new Error(`Teksten er for lang (højst ${MAX_BODY} tegn).`);
+  // Som i chatten: en mindreårig med eget login (eller uden fødselsdato) kan læse, men ikke skrive offentligt.
+  const [me] = await db.select({ birthDate: profiles.birthDate }).from(profiles).where(eq(profiles.id, ctx.profileId));
+  if (isMinor(me?.birthDate ?? null, ctx.now)) throw new Error("Kun voksne kan skrive opslag og nyheder.");
   const scope = (await myScopes(db, ctx)).find((s) => s.key === input.scope);
   if (!scope) throw new Error("Du hører ikke til der.");
   if (input.kind === "news" && !scope.lead) throw new Error("Kun ledelsen kan skrive nyheder.");
