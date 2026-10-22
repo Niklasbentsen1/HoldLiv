@@ -34,7 +34,7 @@ import {
   sendReminders,
   setFeeArchived,
   setTeamDefaultFee,
-  setModuleForTeams,
+  saveModuleMatrix as saveModules,
   updateModuleConfig,
   startCheckout,
   updateFee,
@@ -212,13 +212,10 @@ export async function newTeam(formData: FormData) {
 export async function saveModuleMatrix(formData: FormData) {
   const { ctx } = await requireSession();
   await attempt("/forening", async () => {
-    const clubId = str(formData, "clubId");
-    const allTeams = formData.getAll("team").map(String);
-    for (const key of formData.getAll("module").map(String)) {
-      const on = new Set(formData.getAll(`on_${key}`).map(String));
-      await setModuleForTeams(db, ctx, clubId, key, allTeams.filter((t) => on.has(t)), true);
-      await setModuleForTeams(db, ctx, clubId, key, allTeams.filter((t) => !on.has(t)), false);
-    }
+    const desired = Object.fromEntries(
+      formData.getAll("module").map(String).map((key) => [key, formData.getAll(`on_${key}`).map(String)]),
+    );
+    await saveModules(db, ctx, str(formData, "clubId"), formData.getAll("team").map(String), desired);
   });
   revalidatePath("/forening");
   redirect("/forening");

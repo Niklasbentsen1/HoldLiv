@@ -122,16 +122,50 @@ export async function setModuleForTeams(
   const def = moduleDef(key, registry);
   assertCan(ctx, { action: "club.manage", clubId });
   if (enabled) assertAvailable(def);
+  return db.transaction((tx) => setModuleForTeamsIn(tx, ctx, clubId, key, teamIds, enabled));
+}
+
+async function setModuleForTeamsIn(
+  db: Pick<Db, "select" | "insert">,
+  ctx: AccessContext,
+  clubId: string,
+  key: string,
+  teamIds: string[],
+  enabled: boolean,
+) {
   if (teamIds.length === 0) return 0;
   const owned = await db
     .select({ id: teams.id })
     .from(teams)
     .where(and(eq(teams.clubId, clubId), inArray(teams.id, teamIds)));
   if (owned.length !== new Set(teamIds).size) throw new Error("Et af holdene hører ikke til foreningen.");
-  await db.transaction(async (tx) => {
-    for (const t of owned) await upsert(tx, ctx, t.id, key, enabled);
-  });
+  for (const t of owned) await upsert(db, ctx, t.id, key, enabled);
   return owned.length;
+}
+
+/**
+ * Gemmer foreningens modul-oversigt i én transaktion: `desired` er de hold, der skal have hvert modul.
+ * Alle andre hold i `allTeamIds` får modulet slået fra. Fejler ét modul, gemmes intet.
+ */
+export async function saveModuleMatrix(
+  db: Db,
+  ctx: AccessContext,
+  clubId: string,
+  allTeamIds: string[],
+  desired: Record<string, string[]>,
+  registry: Registry = MODULES,
+) {
+  assertCan(ctx, { action: "club.manage", clubId });
+  await db.transaction(async (tx) => {
+    for (const [key, on] of Object.entries(desired)) {
+      const def = moduleDef(key, registry);
+      const onSet = new Set(on);
+      const off = allTeamIds.filter((t) => !onSet.has(t));
+      if (on.length) assertAvailable(def);
+      await setModuleForTeamsIn(tx, ctx, clubId, key, allTeamIds.filter((t) => onSet.has(t)), true);
+      await setModuleForTeamsIn(tx, ctx, clubId, key, off, false);
+    }
+  });
 }
 
 /** Træner eller admin retter modulets indstillinger for holdet. */
@@ -145,12 +179,13 @@ export async function updateModuleConfig(
 ) {
   const def = moduleDef(key, registry);
   assertCan(ctx, { action: "module.configure", team: await loadTeamFacts(db, teamId) });
-  const config = parseConfig(def, raw);
+  const config = parseConfig(def, raw, "form");
   const [row] = await db
     .select({ enabled: teamModules.enabled })
     .from(teamModules)
     .where(and(eq(teamModules.teamId, teamId), eq(teamModules.module, key)));
-  await upsert(db, ctx, teamId, key, row?.enabled ?? false, config);
+  if (!def.available || !row?.enabled) throw new Error(`${def.name} er ikke slået til for holdet.`);
+  await upsert(db, ctx, teamId, key, true, config);
 }
 
 /** Oversigt til foreningens side: hvert hold og hvilke moduler det bruger. */

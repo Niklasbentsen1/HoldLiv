@@ -9,6 +9,7 @@ import {
   listEnabledModules,
   listTeamModules,
   moduleMatrix,
+  saveModuleMatrix,
   requireModule,
   setModuleForTeams,
   setTeamModule,
@@ -41,6 +42,25 @@ describe("indstillinger", () => {
     expect(parseConfig(MODULES.fines, { minAge: "10", ukendt: 1 })).toEqual({ minAge: 10 });
     expect(() => parseConfig(MODULES.fines, { minAge: "3" })).toThrow(/mellem 6 og 18/);
     expect(() => parseConfig(MODULES.fines, { minAge: "10,5" })).toThrow();
+  });
+});
+
+describe("afkrydsningsfelter", () => {
+  const withBool = { ...MODULES.fines, fields: [{ key: "visAlle", label: "Vis alle", type: "bool" as const, default: true }] };
+  it("et manglende felt fra en formular betyder fra, fra databasen betyder standard", () => {
+    expect(parseConfig(withBool, {}, "form")).toEqual({ visAlle: false });
+    expect(parseConfig(withBool, { visAlle: "on" }, "form")).toEqual({ visAlle: true });
+    expect(parseConfig(withBool, {}, "stored")).toEqual({ visAlle: true });
+    expect(parseConfig(withBool, { visAlle: false }, "stored")).toEqual({ visAlle: false });
+  });
+
+  it("kan slås fra via en formular og huskes", async () => {
+    const reg: Registry = { fines: { ...withBool, available: true } };
+    const admin = await ctxOf("karen");
+    await setTeamModule(db, admin, demo.teams.senior.id, "fines", true, reg);
+    expect((await requireModule(db, admin, demo.teams.senior.id, "fines", reg)).config).toEqual({ visAlle: true });
+    await updateModuleConfig(db, admin, demo.teams.senior.id, "fines", {}, reg);
+    expect((await requireModule(db, admin, demo.teams.senior.id, "fines", reg)).config).toEqual({ visAlle: false });
   });
 });
 
@@ -120,5 +140,29 @@ describe("modulmotor", () => {
     const coach = await ctxOf("mette");
     await expect(setModuleForTeams(db, coach, demo.club.id, "carpool", [demo.teams.u9.id], false, REG)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(moduleMatrix(db, coach, demo.club.id, REG)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("afviser indstillinger for et slukket modul", async () => {
+    const coach = await ctxOf("jonas");
+    await expect(updateModuleConfig(db, coach, demo.teams.u11.id, "fines", { minAge: "10" }, REG)).rejects.toThrow(/ikke slået til/);
+  });
+
+  it("gemmer oversigten i ét hug, og intet gemmes hvis noget fejler", async () => {
+    const admin = await ctxOf("karen");
+    const all = [demo.teams.u9.id, demo.teams.u11.id, demo.teams.senior.id];
+    await saveModuleMatrix(db, admin, demo.club.id, all, { carpool: [demo.teams.u9.id], fines: [] }, REG);
+    let m = await moduleMatrix(db, admin, demo.club.id, REG);
+    expect(m.teams.map((t) => [t.name, t.enabled.carpool, t.enabled.fines])).toEqual([
+      ["Senior herrer", false, false],
+      ["U11 drenge", false, false],
+      ["U9 piger", true, false],
+    ]);
+    await expect(
+      saveModuleMatrix(db, admin, demo.club.id, all, { carpool: all, tasks: [demo.teams.u9.id] }, REG),
+    ).rejects.toThrow(/ikke klar/);
+    m = await moduleMatrix(db, admin, demo.club.id, REG);
+    expect(m.teams.filter((t) => t.enabled.carpool).map((t) => t.name)).toEqual(["U9 piger"]);
+    const coach = await ctxOf("mette");
+    await expect(saveModuleMatrix(db, coach, demo.club.id, all, { carpool: all }, REG)).rejects.toBeInstanceOf(ForbiddenError);
   });
 });

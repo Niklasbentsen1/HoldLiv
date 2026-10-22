@@ -67,13 +67,17 @@ export function defaultConfig(def: ModuleDef): ModuleConfig {
   return Object.fromEntries(def.fields.map((f) => [f.key, f.default]));
 }
 
-/** Validerer indstillinger fra en formular eller fra databasen. Ukendte felter smides væk. */
-export function parseConfig(def: ModuleDef, raw: Record<string, unknown>): ModuleConfig {
+/**
+ * Validerer indstillinger. Ukendte felter smides væk.
+ * Fra en formular (`form`) betyder et manglende afkrydsningsfelt "fra", fordi en ikke-afkrydset
+ * checkbox slet ikke sendes. Fra databasen (`stored`) betyder manglende felt "standardværdien".
+ */
+export function parseConfig(def: ModuleDef, raw: Record<string, unknown>, source: "form" | "stored" = "stored"): ModuleConfig {
   const out: ModuleConfig = {};
   for (const f of def.fields) {
     const v = raw[f.key];
     if (f.type === "bool") {
-      out[f.key] = v === undefined ? f.default : v === true || v === "on" || v === "true";
+      out[f.key] = v === undefined ? (source === "form" ? false : f.default) : v === true || v === "on" || v === "true";
     } else {
       if (v === undefined || v === null || v === "") {
         out[f.key] = f.default;
