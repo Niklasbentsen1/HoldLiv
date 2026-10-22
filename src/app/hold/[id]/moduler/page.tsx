@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { getTeam, listTeamModules } from "../../../../services";
 import { db } from "../../../../lib/db";
 import { requireSession } from "../../../../lib/session";
 import { Shell, ErrorBox } from "../../../../components/Shell";
+import { PageHead } from "../../../../components/ui";
 import { saveModuleConfig } from "../../../actions";
 
 export const dynamic = "force-dynamic";
@@ -16,18 +16,15 @@ export default async function TeamModules({ params, searchParams }: { params: Pr
 
   return (
     <Shell ctx={ctx}>
-      <h1>Moduler</h1>
-      <p className="muted">
-        <Link href={`/hold/${id}`}>{team.name}</Link> · {team.clubName}
-      </p>
+      <PageHead back={{ href: `/hold/${id}`, label: team.name }} title="Moduler" sub={team.clubName} />
       <ErrorBox message={fejl} />
       {!team.canManage && <p className="muted">Kun trænere og administratorer ændrer indstillinger.</p>}
-      <ul className="stack">
+      <ul className="stack" style={{ maxWidth: 640, padding: 0, margin: 0, listStyle: "none" }}>
         {modules.map((m) => (
           <li key={m.key} className="card stack">
-            <div className="spread">
+            <div className="section-head">
               <strong>{m.name}</strong>
-              <span className={m.enabled ? "tag paid" : "tag"}>{m.enabled ? "Slået til" : m.available ? "Slået fra" : "Kommer snart"}</span>
+              <span className={m.enabled ? "pill brand" : "pill"}>{m.enabled ? "Slået til" : m.available ? "Slået fra" : "Kommer snart"}</span>
             </div>
             <p className="muted small">{m.description}</p>
             {m.enabled && m.fields.length > 0 && (

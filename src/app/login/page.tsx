@@ -3,6 +3,7 @@ import { profiles, users } from "../../db/schema";
 import { db } from "../../lib/db";
 import { safeNext } from "../../lib/session";
 import { Bare, ErrorBox } from "../../components/Shell";
+import { Avatar } from "../../components/ui";
 import { demoLogin, requestLoginAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -39,14 +40,17 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       </section>
 
       {demo.length > 0 && (
-        <section>
-          <h2>Demo: log ind som</h2>
-          <p className="muted small">Kun i demoen. Skovby IF er en opdigtet forening.</p>
+        <section className="demo">
+          <div>
+            <h2>Prøv demoen</h2>
+            <p className="muted small">Log ind som en af medlemmerne i Skovby IF, en opdigtet forening.</p>
+          </div>
           <div className="chips">
             {demo.map((p) => (
               <form key={p.id} action={demoLogin}>
                 <input type="hidden" name="userId" value={p.id} />
                 <button className="chip">
+                  <Avatar name={`${p.firstName} ${p.lastName}`} size={28} />
                   {p.firstName} {p.lastName}
                 </button>
               </form>

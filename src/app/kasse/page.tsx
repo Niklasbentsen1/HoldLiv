@@ -31,24 +31,24 @@ export default async function Kasse({ searchParams }: { searchParams: Promise<Pa
       )}
       {p.stripe === "klar" && <p className="ok">Foreningen er koblet til Stripe.</p>}
 
-      <div className="stats">
-        <Link href={`/kasse/medlemmer${q}`} className="stat">
+      <div className="kpis">
+        <Link href={`/kasse/medlemmer${q}`} className="kpi">
           <strong>{o.members.active}</strong>
           <span>aktive medlemmer, heraf {o.members.exempt} gratister</span>
         </Link>
-        <Link href={`/kasse/medlemmer${q}&vis=no_fee`} className={o.members.noFee ? "stat warn" : "stat"}>
+        <Link href={`/kasse/medlemmer${q}&vis=no_fee`} className={o.members.noFee ? "kpi warn" : "kpi"}>
           <strong>{o.members.noFee}</strong>
           <span>mangler kontingent</span>
         </Link>
-        <Link href={`/kasse/opkraevninger${q}`} className="stat">
+        <Link href={`/kasse/opkraevninger${q}`} className="kpi">
           <strong>{kr(o.charges.openOre)}</strong>
           <span>udestående, {o.charges.openCount} opkrævninger</span>
         </Link>
-        <Link href={`/kasse/opkraevninger${q}&vis=overdue`} className={o.charges.overdueCount ? "stat warn" : "stat"}>
+        <Link href={`/kasse/opkraevninger${q}&vis=overdue`} className={o.charges.overdueCount ? "kpi warn" : "kpi"}>
           <strong>{kr(o.charges.overdueOre)}</strong>
           <span>i restance, {o.charges.overdueCount} opkrævninger</span>
         </Link>
-        <div className="stat">
+        <div className="kpi">
           <strong>{kr(o.charges.paidYearOre)}</strong>
           <span>betalt i år</span>
         </div>

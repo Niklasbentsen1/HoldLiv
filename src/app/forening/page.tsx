@@ -3,6 +3,7 @@ import { listAdminClubs, listTreasurers, moduleMatrix } from "../../services";
 import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { Shell, ErrorBox } from "../../components/Shell";
+import { Avatar, Crest, Icon, PageHead } from "../../components/ui";
 import { addTreasurer, newTeam, removeTreasurer, saveModuleMatrix } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -20,20 +21,27 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
       <ErrorBox message={fejl} />
       {clubs.map((c) => (
         <section key={c.id}>
-          <h1>{c.name}</h1>
-          <h2>Hold</h2>
-          <ul className="teams">
+          <PageHead kicker={<><Crest name={c.name} size={22} /> Forening</>} title={c.name} sub={`${c.teams.length} hold`} />
+          <ul className="team-grid">
             {c.teams.map((t) => (
               <li key={t.id}>
-                <Link href={`/hold/${t.id}`} className="card team-link">
-                  <strong>{t.name}</strong>
-                  <span className="muted small">{t.season}</span>
-                  <span className="labels">{t.coaches.length ? `Træner: ${t.coaches.join(", ")}` : "Mangler træner"}</span>
+                <Link href={`/hold/${t.id}`} className="card team-card">
+                  <Crest name={t.name} size={44} />
+                  <span className="grow">
+                    <strong className="block">{t.name}</strong>
+                    <span className="labels">{t.season}</span>
+                    <span className={t.coaches.length ? "labels block" : "labels block cancelled-note"}>
+                      {t.coaches.length ? `Træner: ${t.coaches.join(", ")}` : "Mangler træner"}
+                    </span>
+                  </span>
+                  <span className="go">
+                    <Icon name="arrow" size={16} />
+                  </span>
                 </Link>
               </li>
             ))}
           </ul>
-          <details className="card">
+          <details className="card" style={{ marginTop: 16, maxWidth: 560 }}>
             <summary>Opret hold</summary>
             <form action={newTeam} className="stack">
               <input type="hidden" name="clubId" value={c.id} />
@@ -51,79 +59,94 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
             </form>
             <p className="muted small">Træneren tilføjes bagefter på holdets side.</p>
           </details>
-          <h2>Moduler</h2>
-          <p className="muted small">Vælg hvilke hold der bruger hvilke moduler. Hvert hold får kun de moduler, I slår til.</p>
-          {c.matrix.teams.length > 0 && (
-            <form action={saveModuleMatrix} className="stack">
-              <input type="hidden" name="clubId" value={c.id} />
-              {c.matrix.modules.map((m) => (
-                <input key={m.key} type="hidden" name="module" value={m.key} disabled={!m.available} />
-              ))}
-              {c.matrix.teams.map((t) => (
-                <input key={t.id} type="hidden" name="team" value={t.id} />
-              ))}
-              <div className="matrix-wrap">
-                <table className="matrix">
-                  <thead>
-                    <tr>
-                      <th>Hold</th>
-                      {c.matrix.modules.map((m) => (
-                        <th key={m.key} title={m.description}>
-                          {m.name}
-                          {!m.available && <span className="muted small block">Kommer snart</span>}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {c.matrix.teams.map((t) => (
-                      <tr key={t.id}>
-                        <th>{t.name}</th>
+
+          <section className="section">
+            <div className="section-head">
+              <h2>Moduler</h2>
+            </div>
+            <p className="muted small" style={{ marginBottom: 10 }}>
+              Vælg hvilke hold der bruger hvilke moduler. Hvert hold får kun de moduler, I slår til.
+            </p>
+            {c.matrix.teams.length > 0 && (
+              <form action={saveModuleMatrix} className="stack">
+                <input type="hidden" name="clubId" value={c.id} />
+                {c.matrix.modules.map((m) => (
+                  <input key={m.key} type="hidden" name="module" value={m.key} disabled={!m.available} />
+                ))}
+                {c.matrix.teams.map((t) => (
+                  <input key={t.id} type="hidden" name="team" value={t.id} />
+                ))}
+                <div className="card matrix-wrap">
+                  <table className="matrix">
+                    <thead>
+                      <tr>
+                        <th className="name">Hold</th>
                         {c.matrix.modules.map((m) => (
-                          <td key={m.key}>
-                            <input
-                              type="checkbox"
-                              name={`on_${m.key}`}
-                              value={t.id}
-                              defaultChecked={t.enabled[m.key]}
-                              disabled={!m.available}
-                              aria-label={`${m.name} til ${t.name}`}
-                            />
-                          </td>
+                          <th key={m.key} title={m.description}>
+                            {m.name}
+                            {!m.available && <span className="muted small block">Kommer snart</span>}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <button className="primary">Gem moduler</button>
+                    </thead>
+                    <tbody>
+                      {c.matrix.teams.map((t) => (
+                        <tr key={t.id}>
+                          <th className="name">{t.name}</th>
+                          {c.matrix.modules.map((m) => (
+                            <td key={m.key}>
+                              <input
+                                type="checkbox"
+                                name={`on_${m.key}`}
+                                value={t.id}
+                                defaultChecked={t.enabled[m.key]}
+                                disabled={!m.available}
+                                aria-label={`${m.name} til ${t.name}`}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div>
+                  <button className="primary">Gem moduler</button>
+                </div>
+              </form>
+            )}
+          </section>
+
+          <section className="section" style={{ maxWidth: 560 }}>
+            <div className="section-head">
+              <h2>Kasserer</h2>
+            </div>
+            {c.treasurers.length > 0 ? (
+              <ul className="people">
+                {c.treasurers.map((t) => (
+                  <li key={t.profileId}>
+                    <Avatar name={`${t.firstName} ${t.lastName}`} />
+                    <span className="name grow">
+                      {t.firstName} {t.lastName}
+                    </span>
+                    <form action={removeTreasurer}>
+                      <input type="hidden" name="clubId" value={c.id} />
+                      <input type="hidden" name="profileId" value={t.profileId} />
+                      <button className="link small">Fjern</button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Ingen kasserer endnu. Administratorer kan selv håndtere kontingent under Kasse.</p>
+            )}
+            <form action={addTreasurer} className="inline">
+              <input type="hidden" name="clubId" value={c.id} />
+              <input type="email" name="email" required placeholder="Kassererens e-mail" />
+              <button>Tilføj</button>
             </form>
-          )}
-          <h2>Kasserer</h2>
-          {c.treasurers.length > 0 ? (
-            <ul className="people">
-              {c.treasurers.map((t) => (
-                <li key={t.profileId} className="spread">
-                  <span className="grow">
-                    {t.firstName} {t.lastName}
-                  </span>
-                  <form action={removeTreasurer}>
-                    <input type="hidden" name="clubId" value={c.id} />
-                    <input type="hidden" name="profileId" value={t.profileId} />
-                    <button className="mini">Fjern</button>
-                  </form>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">Ingen kasserer endnu. Administratorer kan selv håndtere kontingent under Kasse.</p>
-          )}
-          <form action={addTreasurer} className="inline">
-            <input type="hidden" name="clubId" value={c.id} />
-            <input type="email" name="email" required placeholder="Kassererens e-mail" />
-            <button>Tilføj</button>
-          </form>
-          <p className="muted small">Kassereren får adgang til medlemmer, kontingent og betalinger, men ikke til hold og trænere.</p>
+            <p className="muted small" style={{ marginTop: 6 }}>Kassereren får adgang til medlemmer, kontingent og betalinger, men ikke til hold og trænere.</p>
+          </section>
         </section>
       ))}
     </Shell>
