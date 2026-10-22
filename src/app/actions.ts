@@ -83,6 +83,7 @@ import { db } from "../lib/db";
 import { sendLoginMail, sendMail } from "../lib/mail";
 import { CHANNELS, KINDS } from "../lib/notify";
 import { origin } from "../lib/origin";
+import { getDevicePushSender } from "../lib/devicePush";
 import { getPushSender } from "../lib/push";
 import { getSmsSender } from "../lib/sms";
 import { SESSION_COOKIE, currentSessionToken, endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
@@ -104,7 +105,7 @@ async function attempt(back: string, fn: () => Promise<unknown>) {
 }
 
 async function deliverFromEnv() {
-  return { mail: sendMail, sms: getSmsSender(), push: getPushSender(), baseUrl: await origin() };
+  return { mail: sendMail, sms: getSmsSender(), push: getPushSender(), devicePush: getDevicePushSender(), baseUrl: await origin() };
 }
 
 // --- Login ---

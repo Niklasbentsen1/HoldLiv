@@ -9,12 +9,13 @@
 //   - dedupe_key sørger for, at den samme besked ikke sendes to gange til samme login på samme kanal.
 import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { eventResponses, events, guardianships, notificationPrefs, notifications, profiles, pushSubscriptions, sessions, teamMembers, teams, users } from "../db/schema";
+import { deviceTokens, eventResponses, events, guardianships, notificationPrefs, notifications, profiles, pushSubscriptions, sessions, teamMembers, teams, users } from "../db/schema";
 import { isMinor, type AccessContext } from "../auth/permissions";
 import { CHANNELS, KINDS, defaultEnabled, type Channel, type Kind } from "../lib/notify";
 import { normalizePhone, type SmsSender } from "../lib/sms";
 import type { Mailer } from "../lib/mail";
 import { PushGoneError, type PushSender } from "../lib/push";
+import { DeviceGoneError, type DevicePushSender } from "../lib/devicePush";
 import { TYPE_LABEL, shortDay, time, when } from "../lib/format";
 import { confirmedProfileIds, setEventCancelled, updateEvent } from "./calendar";
 import { respondToEvent } from "./index";
@@ -26,6 +27,8 @@ export interface Deliver {
   sms: SmsSender | null;
   /** Udeladt eller null, når push ikke er sat op. */
   push?: PushSender | null;
+  /** Mobilappen. Udeladt eller null, når den ikke er sat op. */
+  devicePush?: DevicePushSender | null;
   baseUrl: string;
 }
 
@@ -120,6 +123,13 @@ export async function notifyUsers(db: Db, deliver: Deliver, recipients: Recipien
         .innerJoin(sessions, eq(sessions.id, pushSubscriptions.sessionId))
         .where(and(inArray(pushSubscriptions.userId, recipients.map((r) => r.userId)), gt(sessions.expiresAt, new Date())))
     : [];
+  const devices = recipients.length
+    ? await db
+        .select({ id: deviceTokens.id, userId: deviceTokens.userId, token: deviceTokens.token })
+        .from(deviceTokens)
+        .innerJoin(sessions, eq(sessions.id, deviceTokens.sessionId))
+        .where(and(inArray(deviceTokens.userId, recipients.map((r) => r.userId)), gt(sessions.expiresAt, new Date())))
+    : [];
   const footer = `\n\nVil du have beskeder på en anden måde? Ret det her: ${deliver.baseUrl}/indstillinger`;
 
   for (const r of recipients) {
@@ -127,7 +137,8 @@ export async function notifyUsers(db: Db, deliver: Deliver, recipients: Recipien
       const enabled = prefsRows.find((p) => p.userId === r.userId && p.channel === channel)?.enabled ?? defaultEnabled(msg.kind, channel);
       if (!enabled) continue;
       const userSubs = channel === "push" ? subs.filter((x) => x.userId === r.userId) : [];
-      if (channel === "push" && userSubs.length === 0) continue; // ingen browsere at sende til, så ingen post
+      const userDevices = channel === "push" ? devices.filter((x) => x.userId === r.userId) : [];
+      if (channel === "push" && userSubs.length === 0 && userDevices.length === 0) continue; // ingen browsere eller telefoner at sende til, så ingen post
       const body = channel === "mail" ? msg.body + footer : msg.sms;
 
       const [row] = await db
@@ -143,16 +154,26 @@ export async function notifyUsers(db: Db, deliver: Deliver, recipients: Recipien
         if (channel === "mail") {
           await deliver.mail(r.email, msg.subject, body);
         } else if (channel === "push") {
-          if (!deliver.push) {
+          if (!deliver.push && !deliver.devicePush) {
             status = "skipped";
             error = "Push er ikke sat op";
           } else {
             const payload = JSON.stringify({ title: msg.subject, body: msg.sms, url: msg.url ?? "/" });
             let delivered = 0;
             let lastError: unknown = null;
-            for (const sub of userSubs) {
+            const { push, devicePush } = deliver;
+            for (const d of devicePush ? userDevices : []) {
               try {
-                await deliver.push({ endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth }, payload);
+                await devicePush!(d.token, { title: msg.subject, body: msg.sms, url: msg.url ?? "/" });
+                delivered++;
+              } catch (e) {
+                lastError = e;
+                if (e instanceof DeviceGoneError) await db.delete(deviceTokens).where(eq(deviceTokens.id, d.id));
+              }
+            }
+            for (const sub of push ? userSubs : []) {
+              try {
+                await push!({ endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth }, payload);
                 delivered++;
               } catch (e) {
                 lastError = e;

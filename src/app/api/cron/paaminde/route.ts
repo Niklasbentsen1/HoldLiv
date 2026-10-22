@@ -5,6 +5,7 @@ import { timingSafeEqual } from "node:crypto";
 import { sendUnansweredReminders } from "../../../../services";
 import { db } from "../../../../lib/db";
 import { sendMail } from "../../../../lib/mail";
+import { getDevicePushSender } from "../../../../lib/devicePush";
 import { getPushSender } from "../../../../lib/push";
 import { getSmsSender } from "../../../../lib/sms";
 
@@ -21,7 +22,7 @@ async function run(req: NextRequest) {
   if (!secret) return NextResponse.json({ error: "CRON_SECRET mangler" }, { status: 500 });
   if (!authorized(req, secret)) return NextResponse.json({ error: "Ikke tilladt" }, { status: 401 });
   const baseUrl = (process.env.APP_URL ?? req.nextUrl.origin).replace(/\/$/, "");
-  const result = await sendUnansweredReminders(db, { mail: sendMail, sms: getSmsSender(), push: getPushSender(), baseUrl });
+  const result = await sendUnansweredReminders(db, { mail: sendMail, sms: getSmsSender(), push: getPushSender(), devicePush: getDevicePushSender(), baseUrl });
   return NextResponse.json(result);
 }
 
