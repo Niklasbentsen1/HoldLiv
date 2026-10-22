@@ -54,13 +54,16 @@ export async function setTeamCapacity(db: Db, ctx: AccessContext, teamId: string
     .update(teams)
     .set({ capacity, ...(autoPromote === undefined ? {} : { autoPromote }) })
     .where(eq(teams.id, teamId));
-  await fillOpenSpots(db, ctx, teamId, deliver);
+  const moved = await fillOpenSpots(db, ctx, teamId, deliver);
+  if (moved.length === 0 && deliver) await tellCoachesSpotFree(db, deliver, teamId);
 }
 
-/** Sætter en person på holdets venteliste. Gør ingenting, hvis personen allerede er spiller eller venter. */
-export async function joinWaitlist(db: Db, ctx: AccessContext, teamId: string, profileId: string, note?: string | null) {
+/** Sætter en person på holdets venteliste via holdets invitationskode. Gør intet, hvis personen allerede er spiller eller venter. */
+export async function joinWaitlist(db: Db, ctx: AccessContext, code: string, profileId: string, note?: string | null) {
   assertCan(ctx, { action: "profile.actAs", profileId });
-  return addToWaitlist(db, ctx.userId, teamId, profileId, note);
+  const [team] = await db.select({ id: teams.id }).from(teams).where(eq(teams.inviteCode, code));
+  if (!team) throw new Error("Invitationslinket er ikke gyldigt længere. Bed træneren om et nyt.");
+  return addToWaitlist(db, ctx.userId, team.id, profileId, note);
 }
 
 export async function addToWaitlist(db: Pick<Db, "select" | "insert">, userId: string | null, teamId: string, profileId: string, note?: string | null) {

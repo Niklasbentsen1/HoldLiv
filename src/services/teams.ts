@@ -156,8 +156,8 @@ export async function joinTeamByInvite(db: Db, ctx: AccessContext, code: string,
       .select({ id: teamMembers.profileId })
       .from(teamMembers)
       .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.profileId, profileId), eq(teamMembers.role, "player")));
-    // Er holdet fuldt, kommer man på ventelisten i stedet for på holdet.
-    if (!already && spots.full) {
+    // Er holdet fuldt, eller står andre allerede i kø, kommer man på ventelisten, så ingen springer køen over.
+    if (!already && (spots.full || spots.waiting > 0)) {
       await addToWaitlist(tx, ctx.userId, team.id, profileId);
       return true;
     }

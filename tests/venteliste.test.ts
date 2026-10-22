@@ -118,8 +118,9 @@ describe("venteliste", () => {
     const team = await newTeam(0);
     const a = await family("K");
     const other = await family("L");
-    await joinWaitlist(db, a.ctx, team.id, a.child.id, "Gerne torsdag");
-    await expect(joinWaitlist(db, other.ctx, team.id, a.child.id)).rejects.toThrow();
+    await joinWaitlist(db, a.ctx, team.inviteCode, a.child.id, "Gerne torsdag");
+    await expect(joinWaitlist(db, other.ctx, team.inviteCode, a.child.id)).rejects.toThrow();
+    await expect(joinWaitlist(db, a.ctx, "forkert-kode", a.child.id)).rejects.toThrow(/ikke gyldigt/);
     await expect(leaveWaitlist(db, other.ctx, team.id, a.child.id)).rejects.toThrow();
     // Forælderen ser kun egne børn; træneren ser alle, med forældre og besked.
     expect((await listWaitlist(db, a.ctx, team.id)).map((w) => w.firstName)).toEqual(["K"]);
@@ -150,10 +151,39 @@ describe("venteliste", () => {
     await expect(promoteFromWaitlist(db, mette, team.id, b.child.id)).rejects.toThrow(/ikke på ventelisten/);
     // Bevidst overtrækning er muligt.
     const c = await family("O");
-    await joinWaitlist(db, c.ctx, team.id, c.child.id);
+    await joinWaitlist(db, c.ctx, team.inviteCode, c.child.id);
     await expect(promoteFromWaitlist(db, mette, team.id, c.child.id)).rejects.toThrow(/fuldt/);
     await promoteFromWaitlist(db, mette, team.id, c.child.id, { allowOverfull: true });
     expect(await players(team.id)).toBe(3);
+  });
+});
+
+describe("rækkefølge", () => {
+  it("en nykommer springer ikke køen over, når en plads er blevet ledig, men ikke rykket op endnu", async () => {
+    const team = await newTeam(1, false);
+    const a = await family("T1");
+    const b = await family("T2");
+    const c = await family("T3");
+    await joinTeamByInvite(db, a.ctx, team.inviteCode, a.child.id);
+    await joinTeamByInvite(db, b.ctx, team.inviteCode, b.child.id); // venter
+    await removePlayerNotifying(db, await ctxOf("mette"), deliver, team.id, a.child.id); // pladsen er ledig
+    expect(await teamSpots(db, team.id)).toMatchObject({ free: 1, waiting: 1 });
+    expect((await joinTeamByInvite(db, c.ctx, team.inviteCode, c.child.id)).waitlisted).toBe(true);
+    expect((await listWaitlist(db, await ctxOf("mette"), team.id)).map((w) => w.firstName)).toEqual(["T2", "T3"]);
+    // Ventelisten kan tømmes i rækkefølge, når der er plads.
+    await setTeamCapacity(db, await ctxOf("karen"), team.id, 2);
+    await promoteFromWaitlist(db, await ctxOf("mette"), team.id, b.child.id);
+    expect((await listWaitlist(db, await ctxOf("mette"), team.id)).map((w) => w.firstName)).toEqual(["T3"]);
+  });
+
+  it("når antallet hæves uden automatik, får trænerne besked om pladsen", async () => {
+    const team = await newTeam(1, false);
+    const a = await family("U1");
+    const b = await family("U2");
+    await joinTeamByInvite(db, a.ctx, team.inviteCode, a.child.id);
+    await joinTeamByInvite(db, b.ctx, team.inviteCode, b.child.id);
+    await setTeamCapacity(db, await ctxOf("karen"), team.id, 2, false, deliver);
+    expect(mails.map((m) => m.to)).toEqual([demo.users.mette.user.email]);
   });
 });
 

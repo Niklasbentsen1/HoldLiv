@@ -23,6 +23,7 @@ export default async function Join({ params, searchParams }: { params: Promise<{
     );
   const acting = await loadActingProfiles(db, ctx);
   const spots = await teamSpots(db, team.id);
+  const queue = spots.full || spots.waiting > 0;
 
   return (
     <Shell ctx={ctx}>
@@ -37,7 +38,7 @@ export default async function Join({ params, searchParams }: { params: Promise<{
         <ErrorBox message={fejl} />
         <form action={joinTeam} className="stack">
           <input type="hidden" name="code" value={code} />
-          {spots.full && <p className="pill">Holdet er fuldt. Du kommer på ventelisten og får besked, når der bliver en plads.</p>}
+          {queue && <p className="pill">{spots.full ? "Holdet er fuldt." : "Der er allerede nogen på ventelisten."} Du kommer på ventelisten og får besked, når der bliver en plads.</p>}
           <p>Hvem skal være med på holdet?</p>
           {acting.map((p) => (
             <label key={p.id} className="check">
@@ -45,7 +46,7 @@ export default async function Join({ params, searchParams }: { params: Promise<{
               {p.firstName} {p.lastName} {p.isSelf ? "(mig selv)" : ""}
             </label>
           ))}
-          <button className="primary">{spots.full ? "Sæt på ventelisten" : "Meld på holdet"}</button>
+          <button className="primary">{queue ? "Sæt på ventelisten" : "Meld på holdet"}</button>
         </form>
         {acting.length === 1 && (
           <p className="muted small">
