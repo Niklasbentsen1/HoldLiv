@@ -21,6 +21,11 @@ import {
   createTeam,
   joinTeamByInvite,
   adviseClub,
+  runImport,
+  TARGETS,
+  MAX_IMPORT_BYTES,
+  type ColumnMap,
+  type ImportReport,
   leaveWaitlist,
   promoteFromWaitlist,
   removePlayerNotifying,
@@ -198,6 +203,57 @@ export async function adviceAction(_: { text?: string; error?: string }, formDat
     if (e instanceof ForbiddenError) return { error: "Det har du ikke adgang til." };
     console.error(e);
     return { error: "Rådgiveren kunne ikke svare lige nu. Prøv igen om lidt." };
+  }
+}
+
+// --- Medlemsimport ---
+
+export interface ImportState {
+  error?: string;
+  text?: string;
+  headers?: string[];
+  mapping?: ColumnMap[];
+  counts?: ImportReport["counts"];
+  newTeams?: string[];
+  sample?: { line: number; name: string; status: string; notes: string[] }[];
+  done?: { created: number; updated: number; teamsCreated: number };
+}
+
+const STATUS_LABEL = { new: "Ny", existing: "Findes", duplicate: "Dublet", error: "Fejl" } as const;
+
+export async function importAction(_: ImportState, formData: FormData): Promise<ImportState> {
+  const { ctx } = await requireSession();
+  const clubId = str(formData, "clubId");
+  const file = formData.get("file");
+  const text = typeof file === "object" && file && "text" in file && file.size > 0 ? (file.size > MAX_IMPORT_BYTES ? null : await file.text()) : String(formData.get("text") ?? "");
+  if (text === null) return { error: "Filen er for stor. Del den op i flere filer." };
+  if (!text.trim()) return { error: "Vælg en fil, eller indsæt medlemmerne i feltet." };
+  let mapping: ColumnMap[] | null = null;
+  if (formData.get("headerCount")) {
+    const targets = new Set<string>([...Object.keys(TARGETS), "custom", "ignore"]);
+    const names = JSON.parse(String(formData.get("headers") ?? "[]")) as string[];
+    mapping = names.map((h, i) => {
+      const v = str(formData, `map-${i}`);
+      return { target: (targets.has(v) ? v : "ignore") as ColumnMap["target"], name: h };
+    });
+  }
+  try {
+    const report = await runImport(db, ctx, clubId, text, mapping, formData.get("intent") === "commit");
+    if (report.commit) revalidatePath("/kasse/medlemmer");
+    return {
+      text,
+      headers: report.headers,
+      mapping: report.mapping,
+      counts: report.counts,
+      newTeams: report.newTeams,
+      sample: report.rows.filter((r) => r.status !== "new" || r.warnings.length).slice(0, 40).map((r) => ({ line: r.line, name: `${r.person.firstName} ${r.person.lastName}`.trim() || "(uden navn)", status: STATUS_LABEL[r.status], notes: [...r.errors, ...r.warnings] })),
+      done: report.commit,
+    };
+  } catch (e) {
+    if (e instanceof ForbiddenError) return { error: "Det har du ikke adgang til." };
+    const technical = e instanceof Error && (("cause" in e && !!e.cause) || e.message.startsWith("Failed query"));
+    if (technical || !(e instanceof Error)) console.error(e);
+    return { error: e instanceof Error && !technical ? e.message : "Noget gik galt.", text };
   }
 }
 

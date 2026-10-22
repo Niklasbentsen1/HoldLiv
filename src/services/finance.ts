@@ -9,6 +9,8 @@ import {
   clubRoles,
   clubs,
   guardianships,
+  memberFieldValues,
+  memberFields,
   membershipFees,
   payments,
   profiles,
@@ -270,7 +272,12 @@ const csvCell = (v: unknown) => {
 export async function membersCsv(db: Db, ctx: AccessContext, clubId: string) {
   const members = await listMembers(db, ctx, clubId, { filter: "all" });
   await logAudit(db, { action: "members.exported", clubId, actorUserId: ctx.userId, detail: { rows: members.length } });
-  const header = ["Fornavn", "Efternavn", "Fødselsdato", "E-mail", "Telefon", "Hold", "Forældre", "Kontingent", "Gratist", "Status", "Indmeldt", "Udmeldt", "Skylder (kr.)"];
+  // Foreningens egne felter (fx fra en import) kommer sidst, så listen kan tages med videre.
+  const fields = await db.select().from(memberFields).where(eq(memberFields.clubId, clubId)).orderBy(asc(memberFields.name));
+  const profileIds = members.map((m) => m.profileId);
+  const fieldValues = fields.length && profileIds.length ? await db.select().from(memberFieldValues).where(and(inArray(memberFieldValues.fieldId, fields.map((f) => f.id)), inArray(memberFieldValues.profileId, profileIds))) : [];
+  const valueOf = new Map(fieldValues.map((v) => [`${v.fieldId}|${v.profileId}`, v.value]));
+  const header = ["Fornavn", "Efternavn", "Fødselsdato", "E-mail", "Telefon", "Hold", "Forældre", "Kontingent", "Gratist", "Status", "Indmeldt", "Udmeldt", "Skylder (kr.)", ...fields.map((f) => f.name)];
   const lines = members.map((m) =>
     [
       m.firstName,
@@ -286,6 +293,7 @@ export async function membersCsv(db: Db, ctx: AccessContext, clubId: string) {
       localDate(m.joinedAt),
       m.leftAt ? localDate(m.leftAt) : "",
       (m.openOre / 100).toFixed(2).replace(".", ","),
+      ...fields.map((f) => valueOf.get(`${f.id}|${m.profileId}`) ?? ""),
     ]
       .map(csvCell)
       .join(";"),

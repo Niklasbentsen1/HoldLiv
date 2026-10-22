@@ -733,3 +733,31 @@ export const posts = pgTable(
   },
   (t) => [index("posts_club_idx").on(t.clubId, t.createdAt), index("posts_team_idx").on(t.teamId, t.createdAt)],
 );
+
+// Foreningens egne medlemsfelter (fx "Skostørrelse", "Medlemsnummer"). Navnet vælger foreningen selv.
+export const memberFields = pgTable(
+  "member_fields",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("member_fields_club_name_unique").on(t.clubId, t.name)],
+);
+
+export const memberFieldValues = pgTable(
+  "member_field_values",
+  {
+    fieldId: uuid("field_id")
+      .notNull()
+      .references(() => memberFields.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    value: text("value").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.fieldId, t.profileId] }), index("member_field_values_profile_idx").on(t.profileId)],
+);
