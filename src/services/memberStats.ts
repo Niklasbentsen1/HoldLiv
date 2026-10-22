@@ -2,7 +2,7 @@
 // HoldLiv indberetter ikke selv, og gemmer hverken CPR-numre eller adresser. Rapporten giver de tal, der kan indtastes eller
 // uploades i kommunens og forbundenes portaler: aktive medlemmer pr. aldersgruppe på en valgt dato og spillere pr. hold.
 // Medlemmer uden fødselsdato står for sig, så man kan rette dem, før tallet indberettes.
-import { and, asc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { clubMemberships, profiles, teamMembers, teams } from "../db/schema";
 import { assertCan, type AccessContext } from "../auth/permissions";
@@ -19,12 +19,19 @@ export const AGE_BANDS: { key: string; label: string; from: number; to: number }
   { key: "60+", label: "60 år og over", from: 60, to: 200 },
 ];
 
-/** Aktive medlemmer på en dato: indmeldt senest den dag og ikke udmeldt før dagen efter. */
-export async function memberStats(db: Db, ctx: AccessContext, clubId: string, asOf: string) {
+export type StatsScope = "all" | "active";
+
+/**
+ * Medlemmer på en dato: indmeldt senest den dag (dansk tid) og ikke udmeldt til og med dagen. Et medlem, der først melder sig ud
+ * senere, tæller altså med, så tallene pr. 31. december stadig passer, når de indberettes i januar. Ventelisteplads er ikke medlemskab.
+ * Med scope "active" tæller kun dem, der har et kontingent eller spiller på et hold, så forældre, der kun er medlemmer for at
+ * håndtere børnene, ikke kommer med i tallet.
+ */
+export async function memberStats(db: Db, ctx: AccessContext, clubId: string, asOf: string, scope: StatsScope = "all") {
   assertCan(ctx, { action: "finance.manage", clubId });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf) || Number.isNaN(Date.parse(asOf))) throw new Error("Vælg en dato.");
-  const endOfDay = new Date(`${asOf}T23:59:59.999Z`);
-  const iso = endOfDay.toISOString();
+  // Første tidspunkt efter dagen, i dansk tid.
+  const nextDay = sql`((${asOf}::date + 1)::timestamp at time zone 'Europe/Copenhagen')`;
   const rows = await db
     .select({ profileId: profiles.id, birthDate: profiles.birthDate })
     .from(clubMemberships)
@@ -32,9 +39,12 @@ export async function memberStats(db: Db, ctx: AccessContext, clubId: string, as
     .where(
       and(
         eq(clubMemberships.clubId, clubId),
-        eq(clubMemberships.status, "active"),
-        lte(clubMemberships.joinedAt, endOfDay),
-        or(isNull(clubMemberships.leftAt), gt(clubMemberships.leftAt, endOfDay)),
+        ne(clubMemberships.status, "waitlist"),
+        sql`${clubMemberships.joinedAt} < ${nextDay}`,
+        sql`(${clubMemberships.leftAt} >= ${nextDay} or (${clubMemberships.leftAt} is null and ${clubMemberships.status} = 'active'))`,
+        scope === "active"
+          ? sql`(${clubMemberships.feeId} is not null or exists (select 1 from team_members tm join teams t on t.id = tm.team_id where tm.profile_id = ${clubMemberships.profileId} and tm.role = 'player' and t.club_id = ${clubId}))`
+          : undefined,
       ),
     );
   const bands = AGE_BANDS.map((b) => ({ ...b, count: 0 }));
@@ -56,6 +66,7 @@ export async function memberStats(db: Db, ctx: AccessContext, clubId: string, as
     if (age < 25) under25++;
     if (age < 18) under18++;
   }
+  // Holdenes spillere er dem, der er på holdet nu (hold har ingen datoer), blandt de medlemmer, der tæller på datoen.
   const perTeam = await db
     .select({ teamId: teams.id, name: teams.name, season: teams.season, players: sql<number>`count(distinct ${teamMembers.profileId})::int` })
     .from(teams)
@@ -64,22 +75,23 @@ export async function memberStats(db: Db, ctx: AccessContext, clubId: string, as
       and(
         eq(teamMembers.teamId, teams.id),
         eq(teamMembers.role, "player"),
-        sql`${teamMembers.profileId} in (select profile_id from club_memberships where club_id = ${clubId} and status = 'active' and created_at <= ${iso}::timestamptz and (left_at is null or left_at > ${iso}::timestamptz))`,
+        sql`${teamMembers.profileId} in (select profile_id from club_memberships where club_id = ${clubId} and status <> 'waitlist' and created_at < ${nextDay} and (left_at >= ${nextDay} or (left_at is null and status = 'active')))`,
       ),
     )
     .where(eq(teams.clubId, clubId))
     .groupBy(teams.id, teams.name, teams.season)
     .orderBy(asc(teams.name));
-  return { asOf, total: rows.length, bands, unknown, under25, under18, perTeam };
+  return { asOf, scope, total: rows.length, bands, unknown, under25, under18, perTeam };
 }
 
 /** Tallene som regneark (semikolon, BOM for Excel). */
-export async function memberStatsCsv(db: Db, ctx: AccessContext, clubId: string, asOf: string) {
-  const s = await memberStats(db, ctx, clubId, asOf);
-  await logAudit(db, { action: "memberstats.exported", clubId, actorUserId: ctx.userId, detail: { asOf } });
+export async function memberStatsCsv(db: Db, ctx: AccessContext, clubId: string, asOf: string, scope: StatsScope = "all") {
+  const s = await memberStats(db, ctx, clubId, asOf, scope);
+  await logAudit(db, { action: "memberstats.exported", clubId, actorUserId: ctx.userId, detail: { asOf, scope } });
   const line = (...cells: unknown[]) => cells.map(csvCell).join(";");
   const lines = [
     line("Medlemstal pr.", s.asOf),
+    line("Opgørelse", scope === "active" ? "Kun medlemmer med kontingent eller plads på et hold" : "Alle medlemmer"),
     line("Aldersgruppe", "Antal"),
     ...s.bands.map((b) => line(b.label, b.count)),
     line("Uden fødselsdato", s.unknown),
@@ -87,7 +99,7 @@ export async function memberStatsCsv(db: Db, ctx: AccessContext, clubId: string,
     line("Heraf under 18 år", s.under18),
     line("Heraf under 25 år", s.under25),
     "",
-    line("Hold", "Sæson", "Spillere"),
+    line("Hold (nuværende spillere blandt medlemmerne)", "Sæson", "Spillere"),
     ...s.perTeam.map((t) => line(t.name, t.season ?? "", t.players)),
   ];
   return "﻿" + lines.join("\r\n") + "\r\n";

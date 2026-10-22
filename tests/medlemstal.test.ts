@@ -61,14 +61,35 @@ describe("medlemstal", () => {
     expect(later.bands.find((b) => b.key === "6-12")!.count).toBe(2);
   });
 
+  it("medlemmer, der melder sig ud efter datoen, tæller med, og dansk dato bruges", async () => {
+    const id = await add("Senere", "2014-01-01", "2025-03-01", "2027-01-15");
+    await db.update(clubMemberships).set({ status: "inactive" }).where(eq(clubMemberships.profileId, id));
+    const dec = await memberStats(db, admin, clubId, "2026-12-31");
+    const jan = await memberStats(db, admin, clubId, "2027-01-20");
+    expect(dec.total).toBe(jan.total + 1);
+    // Indmeldt kl. 23.30 UTC den 31. er 00.30 dansk tid den 1. januar og hører til den nye dag.
+    const [p] = await db.insert(profiles).values({ firstName: "Nat", lastName: "T", birthDate: "2014-01-01" }).returning();
+    await db.insert(clubMemberships).values({ clubId, profileId: p.id, joinedAt: new Date("2026-12-31T23:30:00Z") });
+    expect((await memberStats(db, admin, clubId, "2026-12-31")).total).toBe(dec.total);
+    expect((await memberStats(db, admin, clubId, "2027-01-01")).total).toBe(dec.total + 1);
+  });
+
+  it("kan nøjes med medlemmer med kontingent eller hold", async () => {
+    const all = await memberStats(db, admin, clubId, "2026-11-02");
+    const active = await memberStats(db, admin, clubId, "2026-11-02", "active");
+    expect(active.total).toBeLessThan(all.total);
+    expect(active.total).toBe(2); // Barn og Teen spiller på holdet; ingen har kontingent
+  });
+
   it("kun admin/kasserer og gyldig dato, og regnearket har tallene", async () => {
     const u = await registerUser(db, "alm@mt.test", { firstName: "Al", lastName: "M", birthDate: "1990-01-01" });
     await expect(memberStats(db, await loadAccessContext(db, u.user.id, now), clubId, "2026-11-02")).rejects.toThrow();
     await expect(memberStats(db, admin, clubId, "i går")).rejects.toThrow("dato");
     const csv = await memberStatsCsv(db, admin, clubId, "2026-11-02");
+    const total = (await memberStats(db, admin, clubId, "2026-11-02")).total;
     expect(csv).toContain("0–5 år;1");
     expect(csv).toContain("Uden fødselsdato;1");
-    expect(csv).toContain("I alt;7");
+    expect(csv).toContain(`I alt;${total}`);
     expect(csv).toContain("U12;;2");
   });
 });

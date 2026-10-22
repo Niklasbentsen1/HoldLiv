@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const clubId = req.nextUrl.searchParams.get("klub") ?? (await listFinanceClubs(db, session.ctx))[0]?.id ?? "";
   const asOf = req.nextUrl.searchParams.get("dato") ?? localDate(new Date());
   try {
-    const csv = await memberStatsCsv(db, session.ctx, clubId, asOf);
+    const csv = await memberStatsCsv(db, session.ctx, clubId, asOf, req.nextUrl.searchParams.get("kun") === "aktive" ? "active" : "all");
     return new Response(csv, {
       headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="medlemstal-${asOf}.csv"` },
     });
