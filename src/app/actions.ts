@@ -13,6 +13,11 @@ import {
   createEvent,
   createEventSeries,
   createProfileForUser,
+  deleteChildProfile,
+  deleteMyAccount,
+  recordPrivacyConsent,
+  setConsent,
+  type ConsentKind,
   createTeam,
   joinTeamByInvite,
   removeTeamMember,
@@ -173,6 +178,32 @@ export async function demoLogin(formData: FormData) {
   redirect("/");
 }
 
+// --- Privatliv (GDPR) ---
+
+export async function saveConsent(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/indstillinger/privatliv", async () => {
+    await setConsent(db, ctx, str(formData, "profileId"), str(formData, "kind") as ConsentKind, formData.get("granted") === "1");
+  });
+  redirect("/indstillinger/privatliv?gemt=1");
+}
+
+export async function deleteAccountAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/indstillinger/privatliv", () => deleteMyAccount(db, ctx, str(formData, "email")));
+  await endSession();
+  redirect("/login?fejl=" + encodeURIComponent("Din konto og dine oplysninger er slettet."));
+}
+
+export async function deleteChildAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/indstillinger/privatliv", async () => {
+    if (formData.get("sure") !== "on") throw new Error("Sæt kryds for at bekræfte sletningen.");
+    await deleteChildProfile(db, ctx, str(formData, "profileId"));
+  });
+  redirect("/indstillinger/privatliv?gemt=1");
+}
+
 export async function logout() {
   await endSession();
   redirect("/login");
@@ -185,7 +216,9 @@ export async function completeProfile(formData: FormData) {
     const firstName = str(formData, "firstName");
     const lastName = str(formData, "lastName");
     if (!firstName || !lastName) throw new Error("Skriv både fornavn og efternavn");
-    await createProfileForUser(db, userId, { firstName, lastName, phone: opt(formData, "phone"), birthDate: opt(formData, "birthDate") });
+    if (formData.get("privacy") !== "on") throw new Error("Du skal acceptere privatlivspolitikken for at bruge HoldLiv.");
+    const profile = await createProfileForUser(db, userId, { firstName, lastName, phone: opt(formData, "phone"), birthDate: opt(formData, "birthDate") });
+    await recordPrivacyConsent(db, userId, profile.id);
   });
   redirect(safeNext(str(formData, "next")));
 }
