@@ -298,3 +298,4 @@ export * from "./optimering";
 export * from "./gdpr";
 export * from "./mobile";
 export * from "./import";
+export * from "./signup";

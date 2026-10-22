@@ -4,7 +4,8 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { loginTokens, sessions, users } from "../db/schema";
+import { guardianships, loginTokens, profiles, sessions, users } from "../db/schema";
+import { isMinor } from "./permissions";
 
 export const CODE_TTL_MINUTES = 15;
 export const MAX_CODE_ATTEMPTS = 5;
@@ -95,9 +96,36 @@ async function consume(db: Db, tokenId: string, now: Date) {
 
 async function findOrCreateUser(db: Db, email: string): Promise<string> {
   const [created] = await db.insert(users).values({ email }).onConflictDoNothing().returning({ id: users.id });
-  if (created) return created.id;
-  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
-  return existing.id;
+  const userId = created ? created.id : (await db.select({ id: users.id }).from(users).where(eq(users.email, email)))[0].id;
+  await claimProfile(db, userId, email);
+  return userId;
+}
+
+/**
+ * En forening kan have oprettet profilen på forhånd (import eller online indmeldelse). Når e-mailen er bekræftet,
+ * overtager login'et den, så medlemskab og børn følger med. Børneprofiler og profiler uden fødselsdato, der ikke er værger, overtages aldrig.
+ */
+export async function claimProfile(db: Db, userId: string, email: string) {
+  const [mine] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.userId, userId));
+  if (mine) return;
+  const candidates = await db
+    .select({
+      id: profiles.id,
+      birthDate: profiles.birthDate,
+      isGuardian: sql<boolean>`exists (select 1 from ${guardianships} where ${guardianships.guardianProfileId} = ${profiles.id})`,
+      isChild: sql<boolean>`exists (select 1 from ${guardianships} where ${guardianships.childProfileId} = ${profiles.id})`,
+    })
+    .from(profiles)
+    .where(and(sql`lower(${profiles.email}) = ${email}`, isNull(profiles.userId), isNull(profiles.deletedAt)))
+    .orderBy(profiles.createdAt);
+  const eligible = candidates.filter((c) => !c.isChild && (c.birthDate ? !isMinor(c.birthDate) : c.isGuardian));
+  const pick = eligible.find((c) => c.isGuardian) ?? eligible[0];
+  if (!pick) return;
+  try {
+    await db.update(profiles).set({ userId }).where(and(eq(profiles.id, pick.id), isNull(profiles.userId)));
+  } catch (e) {
+    console.error("Kunne ikke overtage profil", e);
+  }
 }
 
 /** Opretter en session. Returnerer værdien til cookien. */

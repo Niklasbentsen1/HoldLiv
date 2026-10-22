@@ -31,6 +31,7 @@ export const teamRole = pgEnum("team_role", ["coach", "player"]);
 export const membershipStatus = pgEnum("membership_status", ["active", "inactive", "waitlist"]);
 export const guardianRelation = pgEnum("guardian_relation", ["parent", "guardian"]);
 export const eventType = pgEnum("event_type", ["training", "match", "tournament", "social", "other"]);
+export const signupStatus = pgEnum("signup_status", ["pending", "approved", "rejected"]);
 export const responseStatus = pgEnum("response_status", ["yes", "no", "maybe"]);
 
 export const users = pgTable("users", {
@@ -172,6 +173,11 @@ export const clubs = pgTable("clubs", {
   slug: text("slug").notNull().unique(),
   // Foreningens egen Stripe-konto (Connect). Pengene går direkte til foreningen.
   stripeAccountId: text("stripe_account_id"),
+  // Online indmeldelse: åbent link, aldersgrænser og foreningens egne betingelser. Admin godkender hver ansøgning.
+  signupEnabled: boolean("signup_enabled").notNull().default(false),
+  signupMinAge: integer("signup_min_age"),
+  signupMaxAge: integer("signup_max_age"),
+  signupTerms: text("signup_terms"),
   createdAt: createdAt(),
 });
 
@@ -760,4 +766,35 @@ export const memberFieldValues = pgTable(
     value: text("value").notNull(),
   },
   (t) => [primaryKey({ columns: [t.fieldId, t.profileId] }), index("member_field_values_profile_idx").on(t.profileId)],
+);
+
+// Ansøgning om medlemskab fra det åbne tilmeldingslink. Personen oprettes først, når admin godkender.
+export const signupRequests = pgTable(
+  "signup_requests",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    firstName: text("first_name").notNull(),
+    lastName: text("last_name").notNull(),
+    birthDate: date("birth_date").notNull(),
+    // Ansøgerens e-mail, eller forælderens, hvis ansøgeren er under 18.
+    contactEmail: text("contact_email").notNull(),
+    phone: text("phone"),
+    guardianFirstName: text("guardian_first_name"),
+    guardianLastName: text("guardian_last_name"),
+    message: text("message"),
+    // De betingelser, der stod på siden, da der blev sagt ja.
+    termsText: text("terms_text"),
+    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }).notNull(),
+    status: signupStatus("status").notNull().default("pending"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    decisionNote: text("decision_note"),
+    profileId: uuid("profile_id").references(() => profiles.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("signup_requests_club_idx").on(t.clubId, t.status, t.createdAt)],
 );

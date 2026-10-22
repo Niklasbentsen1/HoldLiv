@@ -23,6 +23,9 @@ import {
   joinTeamByInvite,
   adviseClub,
   runImport,
+  submitSignup,
+  saveSignupSettings,
+  decideSignup,
   TARGETS,
   MAX_IMPORT_BYTES,
   type ColumnMap,
@@ -262,6 +265,66 @@ export async function importAction(_: ImportState, formData: FormData): Promise<
     if (technical || !(e instanceof Error)) console.error(e);
     return { error: e instanceof Error && !technical ? e.message : "Noget gik galt.", text };
   }
+}
+
+// --- Online indmeldelse ---
+
+export interface SignupState {
+  error?: string;
+  done?: boolean;
+  values?: Record<string, string>;
+}
+
+/** Den åbne tilmeldingsside. Ingen login; honeypot-feltet "website" skal være tomt. */
+export async function submitSignupAction(slug: string, _: SignupState, formData: FormData): Promise<SignupState> {
+  const values = Object.fromEntries([...formData.entries()].filter(([, v]) => typeof v === "string")) as Record<string, string>;
+  if (str(formData, "website")) return { done: true };
+  try {
+    await submitSignup(
+      db,
+      slug,
+      {
+        firstName: str(formData, "firstName"),
+        lastName: str(formData, "lastName"),
+        birthDate: str(formData, "birthDate"),
+        email: str(formData, "email"),
+        phone: opt(formData, "phone"),
+        guardianName: opt(formData, "guardianName"),
+        teamId: opt(formData, "teamId"),
+        message: opt(formData, "message"),
+        acceptTerms: formData.get("acceptTerms") === "on",
+      },
+      sendMail,
+      await origin(),
+    );
+    return { done: true };
+  } catch (e) {
+    const technical = e instanceof Error && (("cause" in e && !!e.cause) || e.message.startsWith("Failed query"));
+    if (technical || !(e instanceof Error)) console.error(e);
+    return { error: e instanceof Error && !technical ? e.message : "Noget gik galt. Prøv igen om lidt.", values };
+  }
+}
+
+export async function saveSignupSettingsAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const clubId = str(formData, "clubId");
+  const age = (k: string) => (str(formData, k) === "" ? null : Number(str(formData, k)));
+  await attempt(`/forening/tilmeldinger?klub=${clubId}`, () =>
+    saveSignupSettings(db, ctx, clubId, { enabled: formData.get("enabled") === "on", minAge: age("minAge"), maxAge: age("maxAge"), terms: opt(formData, "terms") }),
+  );
+  revalidatePath("/forening/tilmeldinger");
+  redirect(`/forening/tilmeldinger?klub=${clubId}`);
+}
+
+export async function decideSignupAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const clubId = str(formData, "clubId");
+  const approve = formData.get("intent") === "approve";
+  await attempt(`/forening/tilmeldinger?klub=${clubId}`, () =>
+    decideSignup(db, ctx, str(formData, "requestId"), approve ? { approve: true, teamId: opt(formData, "teamId") } : { approve: false, note: opt(formData, "note") }, sendMail),
+  );
+  revalidatePath("/forening/tilmeldinger");
+  redirect(`/forening/tilmeldinger?klub=${clubId}`);
 }
 
 // --- Privatliv (GDPR) ---
