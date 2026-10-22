@@ -13,6 +13,7 @@ const TABS = [
   { path: "/opkraevninger", label: "Opkrævninger" },
   { path: "/udlaeg", label: "Udlæg" },
   { path: "/camps", label: "Camps" },
+  { path: "/medlemstal", label: "Medlemstal" },
 ];
 
 /** Foreningen kassen viser: den valgte i ?klub=, ellers den første. null hvis login'et ikke er kasserer/admin. */
