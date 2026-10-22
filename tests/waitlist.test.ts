@@ -116,6 +116,26 @@ describe("venteliste på en aktivitet", () => {
     expect(names(d.groups.waitlist)).toEqual(["Freja", "Emma"]);
   });
 
+  it("en fjernet spiller og trænerens eget svar optager ingen plads", async () => {
+    await sql`delete from team_members where team_id = ${demo.teams.u9.id} and profile_id = ${K().emma.id}`;
+    // Emma er fjernet fra holdet, men har stadig et gammelt "kommer". Ida og Noor har pladserne, Freja står først i køen.
+    await sql`insert into event_responses (event_id, profile_id, status, responded_by_user_id, yes_since)
+      values (${event().id}, ${demo.users.mette.profile.id}, 'yes', ${demo.users.mette.user.id}, ${new Date(BASE).toISOString()})`;
+    mails.length = 0;
+    const d = await detail();
+    expect(names(d.groups.yes)).toEqual(["Ida", "Noor"]);
+    expect(names(d.groups.waitlist)).toEqual(["Freja"]);
+    // Når Ida melder fra, rykker Freja op (og hendes forældre får besked), ikke nogen skjult.
+    await respondToEventNotifying(db, await ctxOf("mette"), deliver, event().id, K().ida.id, "no");
+    expect(mails.map((m) => m.to).sort()).toEqual(["anne@holdliv.test", "lars@holdliv.test"]);
+    // Trænerens eget svar fjernes igen uden at give nogen besked.
+    mails.length = 0;
+    await sql`delete from event_responses where event_id = ${event().id} and profile_id = ${demo.users.mette.profile.id}`;
+    await respondToEventNotifying(db, await ctxOf("mette"), deliver, event().id, K().noor.id, "no");
+    expect(mails).toEqual([]);
+    await sql`insert into team_members (team_id, profile_id, role) values (${demo.teams.u9.id}, ${K().emma.id}, 'player')`;
+  });
+
   it("uden grænse er alle med, og ugyldige antal afvises", async () => {
     await updateEventNotifying(db, await ctxOf("mette"), deliver, event().id, { maxParticipants: null });
     expect((await detail()).groups.waitlist).toEqual([]);

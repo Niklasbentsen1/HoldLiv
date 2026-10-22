@@ -184,13 +184,15 @@ export async function seedDemo(db: Db, now = new Date()) {
       if (past && r > 0.93) continue;
       const status = r < 0.12 ? "no" : r < 0.18 ? "maybe" : "yes";
       const by = guardianOf.get(profileId) ?? playerUser.get(profileId)!;
+      const respondedAt = new Date(Math.min(e.startsAt.getTime(), now.getTime()) - (1 + r * 3) * 86_400_000);
       rows.push({
         eventId: e.id,
         profileId,
         status: status as "yes" | "no" | "maybe",
         comment: status === "no" ? NO_REASONS[Math.floor(r * 100) % NO_REASONS.length] : null,
         respondedByUserId: by,
-        respondedAt: new Date(Math.min(e.startsAt.getTime(), now.getTime()) - (1 + r * 3) * 86_400_000),
+        respondedAt,
+        yesSince: status === "yes" ? respondedAt : null,
       });
     }
   }

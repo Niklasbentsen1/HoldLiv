@@ -18,12 +18,15 @@ export function splitYes<T extends { profileId: string; yesSince: Date | null }>
 
 /** Hvem der har en plads på aktiviteten lige nu. */
 export async function confirmedProfileIds(db: Db, eventId: string) {
-  const [e] = await db.select({ max: events.maxParticipants }).from(events).where(eq(events.id, eventId));
+  const [e] = await db.select({ max: events.maxParticipants, teamId: events.teamId }).from(events).where(eq(events.id, eventId));
+  if (!e) return new Set<string>();
+  // Kun holdets nuværende spillere tæller, som på aktivitetssiden: en træner eller en fjernet spiller optager ingen plads.
   const yes = await db
     .select({ profileId: eventResponses.profileId, yesSince: eventResponses.yesSince })
     .from(eventResponses)
+    .innerJoin(teamMembers, and(eq(teamMembers.profileId, eventResponses.profileId), eq(teamMembers.teamId, e.teamId), eq(teamMembers.role, "player")))
     .where(and(eq(eventResponses.eventId, eventId), eq(eventResponses.status, "yes")));
-  return new Set(splitYes(yes, e?.max ?? null).confirmed.map((r) => r.profileId));
+  return new Set(splitYes(yes, e.max).confirmed.map((r) => r.profileId));
 }
 
 export function checkMaxParticipants(max: number | null | undefined) {
@@ -102,7 +105,8 @@ export async function listTeamEvents(db: Db, ctx: AccessContext, teamId: string,
       location: events.location,
       seriesId: events.seriesId,
       cancelledAt: events.cancelledAt,
-      yes: sql<number>`count(*) filter (where ${eventResponses.status} = 'yes')::int`,
+      // Med begrænsede pladser er det kun dem med plads, der "kommer"; resten står på venteliste.
+      yes: sql<number>`least(count(*) filter (where ${eventResponses.status} = 'yes'), coalesce(${events.maxParticipants}, 2147483647))::int`,
       maybe: sql<number>`count(*) filter (where ${eventResponses.status} = 'maybe')::int`,
       no: sql<number>`count(*) filter (where ${eventResponses.status} = 'no')::int`,
     })
