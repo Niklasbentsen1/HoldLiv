@@ -134,6 +134,13 @@
       "when": 1792690075066,
       "tag": "0018_mobil",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792690442147,
+      "tag": "0019_venteliste",
+      "breakpoints": true
     }
   ]
 }

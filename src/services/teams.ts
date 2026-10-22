@@ -2,9 +2,10 @@
 import { randomBytes } from "node:crypto";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { clubMemberships, clubs, guardianships, profiles, teamMembers, teams, users } from "../db/schema";
+import { clubMemberships, clubs, guardianships, profiles, teamMembers, teams, teamWaitlist, users } from "../db/schema";
 import { assertCan, can, canActAs, type AccessContext } from "../auth/permissions";
 import { loadProfileFacts, loadTeamFacts, loadTeamMemberIds } from "../auth/context";
+import { addToWaitlist, lockTeamSpots, teamSpots } from "./waitlist";
 
 export const newInviteCode = () => randomBytes(6).toString("base64url");
 
@@ -113,6 +114,7 @@ export async function getTeam(db: Db, ctx: AccessContext, teamId: string) {
     clubName: team.clubName,
     inviteCode: leads ? team.inviteCode : null,
     canManage: leads,
+    spots: await teamSpots(db, teamId),
     canManageCoaches: can(ctx, { action: "team.coaches.manage", team: facts }),
     coaches: members.filter((m) => m.role === "coach").map(({ profileId, firstName, lastName }) => ({ profileId, firstName, lastName })),
     players: players.map((p) => ({
@@ -148,12 +150,24 @@ export async function joinTeamByInvite(db: Db, ctx: AccessContext, code: string,
   assertCan(ctx, { action: "profile.actAs", profileId });
   const team = await findTeamByInvite(db, code);
   if (!team) throw new Error("Invitationslinket er ikke gyldigt længere. Bed træneren om et nyt.");
-  await db.transaction(async (tx) => {
+  const waitlisted = await db.transaction(async (tx) => {
+    const spots = await lockTeamSpots(tx, team.id);
+    const [already] = await tx
+      .select({ id: teamMembers.profileId })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.profileId, profileId), eq(teamMembers.role, "player")));
+    // Er holdet fuldt, eller står andre allerede i kø, kommer man på ventelisten, så ingen springer køen over.
+    if (!already && (spots.full || spots.waiting > 0)) {
+      await addToWaitlist(tx, ctx.userId, team.id, profileId);
+      return true;
+    }
     await tx.insert(clubMemberships).values({ clubId: team.clubId, profileId }).onConflictDoNothing();
     await tx.insert(teamMembers).values({ teamId: team.id, profileId, role: "player" }).onConflictDoNothing();
+    await tx.delete(teamWaitlist).where(and(eq(teamWaitlist.teamId, team.id), eq(teamWaitlist.profileId, profileId)));
     await applyTeamDefaultFee(tx, team.id, profileId);
+    return false;
   });
-  return team;
+  return { ...team, waitlisted };
 }
 
 /** Børnene login'et er værge for, med hold og de andre værger. */

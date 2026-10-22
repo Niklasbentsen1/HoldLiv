@@ -20,8 +20,8 @@ export const KINDS = {
     description: "Når en træning eller kamp bliver aflyst, flyttet eller får nyt sted.",
   },
   waitlist: {
-    label: "Plads på en aktivitet",
-    description: "Når du eller dit barn rykker op fra ventelisten og får en plads.",
+    label: "Plads på en aktivitet eller et hold",
+    description: "Når du eller dit barn rykker op fra en venteliste og får en plads, og for trænere når der bliver en ledig plads.",
   },
   event_reminder: {
     label: "Påmindelser om at svare",

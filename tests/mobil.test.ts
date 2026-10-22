@@ -143,3 +143,21 @@ describe("push til telefoner", () => {
     expect((await db.select().from(deviceTokens).where(eq(deviceTokens.token, TOKEN(5))))[0].userId).toBe(demo.users.ali.user.id);
   });
 });
+
+describe("fejlbeskeder", () => {
+  it("databasefejl når aldrig appen, og ugyldige id'er afvises før databasen", async () => {
+    const { guard, uuid } = await import("../src/lib/mobileHttp");
+    expect(() => uuid("abc", "aktivitet")).toThrow(/Ugyldigt aktivitet/);
+    expect(uuid("5f31267e-4958-4082-9959-082c75b724ad")).toBe("5f31267e-4958-4082-9959-082c75b724ad");
+    const leak = await guard(async () => {
+      throw Object.assign(new Error('Failed query: select * from "events" params: abc'), { cause: new Error("invalid input syntax for type uuid") });
+    });
+    expect(leak.status).toBe(500);
+    expect(await leak.json()).toEqual({ error: "Noget gik galt." });
+    const known = await guard(async () => {
+      throw new Error("Holdet er fuldt.");
+    });
+    expect(known.status).toBe(400);
+    expect(await known.json()).toEqual({ error: "Holdet er fuldt." });
+  });
+});

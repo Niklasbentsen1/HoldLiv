@@ -20,7 +20,10 @@ import {
   type ConsentKind,
   createTeam,
   joinTeamByInvite,
-  removeTeamMember,
+  leaveWaitlist,
+  promoteFromWaitlist,
+  removePlayerNotifying,
+  setTeamCapacity,
   respondToEventNotifying,
   rotateInviteCode,
   setEventCancelledNotifying,
@@ -97,8 +100,10 @@ async function attempt(back: string, fn: () => Promise<unknown>) {
   try {
     await fn();
   } catch (e) {
+    // Databasefejl (med årsag eller "Failed query") vises aldrig for brugeren.
+    const technical = e instanceof Error && (("cause" in e && !!e.cause) || e.message.startsWith("Failed query"));
     const message =
-      e instanceof ForbiddenError ? "Det har du ikke adgang til." : e instanceof Error ? e.message : "Noget gik galt.";
+      e instanceof ForbiddenError ? "Det har du ikke adgang til." : e instanceof Error && !technical ? e.message : "Noget gik galt.";
     if (!(e instanceof ForbiddenError || e instanceof LoginError || e instanceof MfaError)) console.error(e);
     redirect(`${back}${back.includes("?") ? "&" : "?"}fejl=${encodeURIComponent(message)}`);
   }
@@ -275,11 +280,17 @@ export async function joinTeam(formData: FormData) {
   const code = str(formData, "code");
   const ids = formData.getAll("profileId").map(String);
   let teamId = "";
+  let waiting = false;
   await attempt(`/join/${code}`, async () => {
     if (ids.length === 0) throw new Error("Vælg hvem der skal på holdet");
-    for (const id of ids) teamId = (await joinTeamByInvite(db, ctx, code, id)).id;
+    for (const id of ids) {
+      const r = await joinTeamByInvite(db, ctx, code, id);
+      if (r.waitlisted) waiting = true;
+      else teamId = r.id;
+    }
   });
-  redirect(`/hold/${teamId}`);
+  // Står alle på venteliste, kan man endnu ikke se holdet; så vises ventelisten under Familie.
+  redirect(teamId ? `/hold/${teamId}${waiting ? "?venteliste=1" : ""}` : "/familie?venteliste=1");
 }
 
 export async function newInviteLink(formData: FormData) {
@@ -292,8 +303,35 @@ export async function newInviteLink(formData: FormData) {
 export async function removePlayer(formData: FormData) {
   const { ctx } = await requireSession();
   const teamId = str(formData, "teamId");
-  await attempt(`/hold/${teamId}`, () => removeTeamMember(db, ctx, teamId, str(formData, "profileId"), "player"));
+  await attempt(`/hold/${teamId}`, async () => removePlayerNotifying(db, ctx, await deliverFromEnv(), teamId, str(formData, "profileId")));
   revalidatePath(`/hold/${teamId}`);
+}
+
+export async function saveCapacity(formData: FormData) {
+  const { ctx } = await requireSession();
+  const teamId = str(formData, "teamId");
+  await attempt(`/hold/${teamId}`, async () => {
+    const raw = str(formData, "capacity");
+    await setTeamCapacity(db, ctx, teamId, raw === "" ? null : Number(raw), formData.get("autoPromote") === "on", await deliverFromEnv());
+  });
+  revalidatePath(`/hold/${teamId}`);
+}
+
+export async function promotePlayer(formData: FormData) {
+  const { ctx } = await requireSession();
+  const teamId = str(formData, "teamId");
+  await attempt(`/hold/${teamId}`, async () =>
+    promoteFromWaitlist(db, ctx, teamId, str(formData, "profileId"), { allowOverfull: formData.get("overfull") === "on", deliver: await deliverFromEnv() }),
+  );
+  revalidatePath(`/hold/${teamId}`);
+}
+
+export async function leaveWaitlistAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const teamId = str(formData, "teamId");
+  const back = safeNext(str(formData, "back")) || `/hold/${teamId}`;
+  await attempt(back, () => leaveWaitlist(db, ctx, teamId, str(formData, "profileId")));
+  revalidatePath(back);
 }
 
 export async function addCoach(formData: FormData) {
