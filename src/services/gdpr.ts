@@ -17,6 +17,7 @@ import {
   clubs,
   consents,
   eventResponses,
+  expenseClaims,
   events,
   fines,
   guardianships,
@@ -229,6 +230,8 @@ async function anonymize(tx: Tx, profileIds: string[], now: Date) {
   await tx.delete(guardianships).where(inArray(guardianships.childProfileId, profileIds));
   await tx.delete(guardianships).where(inArray(guardianships.guardianProfileId, profileIds));
   await tx.update(teamTasks).set({ assigneeProfileId: null }).where(inArray(teamTasks.assigneeProfileId, profileIds));
+  // Krav, der ikke blev godkendt, slettes med kvitteringer. Godkendte og betalte gemmes (bogføringsloven) og er uden navn, når profilen anonymiseres.
+  await tx.delete(expenseClaims).where(and(inArray(expenseClaims.profileId, profileIds), inArray(expenseClaims.status, ["submitted", "rejected", "cancelled"])));
   // Bødernes tekst kan nævne personen.
   await tx.update(fines).set({ description: "Slettet" }).where(inArray(fines.profileId, profileIds));
   await tx

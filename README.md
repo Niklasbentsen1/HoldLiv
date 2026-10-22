@@ -88,6 +88,8 @@ Kassererens værktøj ligger under **Kasse** (`/kasse`), medlemmernes under **Be
 
 Stripe sættes op med `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET`. Webhooken oprettes i Stripe som Connect-webhook med hændelserne `checkout.session.completed`, `checkout.session.async_payment_succeeded` og `payment_intent.succeeded` (den sidste afgør automatiske kortbetalinger, hvor svaret udeblev). Automatisk betaling med gemt kort trækkes af `/api/cron/betalinger` (kald den fx hvert kvarter med `Authorization: Bearer $CRON_SECRET`); foreningen slår det til under Kasse, Kontingenter. Kassereren kobler foreningen til Stripe med knappen under Kasse.
 
+Udlæg og kørsel: medlemmer sender dem på `/udlaeg` (udlæg kræver foto eller PDF af kvitteringen, op til 6 MB); admin og kasserer godkender, betaler og sætter kilometersatsen under Kasse, Udlæg. Satsen og beløbene bestemmer foreningen selv. Bilagene ligger i databasen og kan kun hentes af ejeren og foreningens admin/kasserer.
+
 ## Design
 
 - **Udtryk:** lyse flader med hvide, meget runde kort og én **signaturfarve** (`--brand`). Det vigtigste på hver skærm (fx næste aktivitet) står i et kort med signaturfarven som gradient. Skrift: Bricolage Grotesque (selvhostet via `@fontsource-variable`). Mørk tilstand følger systemet.

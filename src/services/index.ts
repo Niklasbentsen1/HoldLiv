@@ -285,6 +285,7 @@ export * from "./teams";
 export * from "./calendar";
 export * from "./finance";
 export * from "./autocharge";
+export * from "./expenses";
 export * from "./modules";
 export * from "./carpool";
 export * from "./tasks";

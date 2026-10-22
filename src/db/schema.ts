@@ -8,6 +8,7 @@
 //   så én profil kan være admin i foreningen, træner på ét hold og spiller på et andet.
 import { sql } from "drizzle-orm";
 import {
+  customType,
   date,
   integer,
   pgEnum,
@@ -22,6 +23,7 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
@@ -182,6 +184,8 @@ export const clubs = pgTable("clubs", {
   arrearsBlockDays: integer("arrears_block_days"),
   // Foreningen tillader, at medlemmer gemmer et kort, så forfaldne opkrævninger trækkes automatisk.
   autoChargeEnabled: boolean("auto_charge_enabled").notNull().default(false),
+  // Foreningens egen kilometersats til kørselsgodtgørelse, i øre pr. km. Null = kørsel kan ikke indberettes. HoldLiv fastsætter ingen sats.
+  mileageRateOrePerKm: integer("mileage_rate_ore_per_km"),
   createdAt: createdAt(),
 });
 
@@ -862,3 +866,53 @@ export const savedCards = pgTable(
   },
   (t) => [uniqueIndex("saved_cards_active_unique").on(t.clubId, t.payerProfileId).where(sql`${t.removedAt} is null`)],
 );
+
+// --- Udlæg og kørsel ---
+
+export const expenseKind = pgEnum("expense_kind", ["expense", "mileage"]);
+export const expenseStatus = pgEnum("expense_status", ["submitted", "approved", "rejected", "paid", "cancelled"]);
+
+// Et udlæg (med foto af kvitteringen) eller en kørselsgodtgørelse, som et medlem beder foreningen betale. Satsen for kørsel
+// kopieres til kravet, så en senere ændring af foreningens sats ikke ændrer gamle krav.
+export const expenseClaims = pgTable(
+  "expense_claims",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    kind: expenseKind("kind").notNull(),
+    description: text("description").notNull(),
+    amountOre: integer("amount_ore").notNull(),
+    // Kun kørsel: antal kilometer i tiendedele og den sats (øre pr. km), beløbet er regnet med.
+    kmTenths: integer("km_tenths"),
+    rateOrePerKm: integer("rate_ore_per_km"),
+    spentOn: date("spent_on").notNull(),
+    status: expenseStatus("status").notNull().default("submitted"),
+    createdAt: createdAt(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    rejectReason: text("reject_reason"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    paidByUserId: uuid("paid_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    payNote: text("pay_note"),
+  },
+  (t) => [index("expense_claims_club_status_idx").on(t.clubId, t.status), index("expense_claims_profile_idx").on(t.profileId)],
+);
+
+// Fotoet eller PDF'en af kvitteringen. Ligger i databasen, så det følger sikkerhedskopierne og kun kan hentes med adgangstjek.
+export const expenseReceipts = pgTable("expense_receipts", {
+  id: id(),
+  claimId: uuid("claim_id")
+    .notNull()
+    .unique()
+    .references(() => expenseClaims.id, { onDelete: "cascade" }),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  data: bytea("data").notNull(),
+  createdAt: createdAt(),
+});

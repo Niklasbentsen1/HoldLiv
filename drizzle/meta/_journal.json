@@ -169,6 +169,13 @@
       "when": 1792694369865,
       "tag": "0023_korttraek",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792695981479,
+      "tag": "0024_udlaeg",
+      "breakpoints": true
     }
   ]
 }

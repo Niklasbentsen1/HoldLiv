@@ -29,6 +29,10 @@ export const KINDS = {
     // Der trækkes penge, så betaleren skal altid kunne se det.
     mandatory: ["mail"],
   },
+  expense: {
+    label: "Udlæg og kørsel",
+    description: "Når et udlæg skal godkendes (kassereren og admin), og når dit eget udlæg er godkendt, afvist eller betalt.",
+  },
   event_reminder: {
     label: "Påmindelser om at svare",
     description: "Dagen før svarfristen (eller før aktiviteten), hvis du eller dit barn ikke har meldt til eller fra.",

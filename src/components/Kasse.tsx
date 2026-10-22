@@ -11,6 +11,7 @@ const TABS = [
   { path: "/medlemmer", label: "Medlemmer" },
   { path: "/kontingenter", label: "Kontingenter" },
   { path: "/opkraevninger", label: "Opkrævninger" },
+  { path: "/udlaeg", label: "Udlæg" },
 ];
 
 /** Foreningen kassen viser: den valgte i ?klub=, ellers den første. null hvis login'et ikke er kasserer/admin. */
