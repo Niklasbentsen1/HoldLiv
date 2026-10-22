@@ -98,7 +98,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
               mine.map((p) => (
                 <div key={p.profileId} className="stack" style={{ gap: 0 }}>
                   <span className="hero-eyebrow">{mine.length > 1 || !p.mine ? p.firstName : `Dit svar for ${p.firstName}`}</span>
-                  <RespondForm eventId={id} profileId={p.profileId} status={p.status} comment={p.comment} back={back} disabled={!p.canRespond} waitlistPosition={p.waitlistPosition} />
+                  <RespondForm eventId={id} profileId={p.profileId} status={p.status} comment={p.comment} back={back} disabled={!p.canRespond} waitlistPosition={p.waitlistPosition} name={p.firstName} />
                 </div>
               ))}
           </section>

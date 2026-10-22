@@ -107,6 +107,8 @@ export async function listTeamEvents(db: Db, ctx: AccessContext, teamId: string,
       cancelledAt: events.cancelledAt,
       // Med begrænsede pladser er det kun dem med plads, der "kommer"; resten står på venteliste.
       yes: sql<number>`least(count(*) filter (where ${eventResponses.status} = 'yes'), coalesce(${events.maxParticipants}, 2147483647))::int`,
+      /** Alle "kommer"-svar, også dem på venteliste. */
+      yesAll: sql<number>`count(*) filter (where ${eventResponses.status} = 'yes')::int`,
       maybe: sql<number>`count(*) filter (where ${eventResponses.status} = 'maybe')::int`,
       no: sql<number>`count(*) filter (where ${eventResponses.status} = 'no')::int`,
     })
