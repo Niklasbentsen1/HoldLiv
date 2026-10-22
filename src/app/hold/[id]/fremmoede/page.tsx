@@ -18,7 +18,7 @@ export default async function Attendance({ params, searchParams }: { params: Pro
   const o = await getAttendanceOverview(db, ctx, id, from, to);
 
   return (
-    <Shell admin={ctx.adminClubs.size > 0}>
+    <Shell ctx={ctx}>
       <Link href={`/hold/${id}`} className="muted small">
         ← {team.name}
       </Link>

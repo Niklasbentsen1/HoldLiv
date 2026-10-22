@@ -1,6 +1,6 @@
 # HoldLiv
 
-Foreningsplatform til holdsport. Indtil videre: profiler, roller og rettigheder, login uden kodeord, hold, kalender med faste træninger og kampe, til- og framelding (også for forældre på barnets vegne) og trænerens fremmødeoverblik.
+Foreningsplatform til holdsport. Indtil videre: profiler, roller og rettigheder, login uden kodeord, hold, kalender med faste træninger og kampe, til- og framelding (også for forældre på barnets vegne), trænerens fremmødeoverblik, og medlemmer og kontingent med betaling til kassereren.
 
 ## Stack
 
@@ -16,7 +16,8 @@ Foreningsplatform til holdsport. Indtil videre: profiler, roller og rettigheder,
 | Profil | `profiles` | En person i HoldLiv. Har den et login, er `user_id` sat. Børn har ingen login. |
 | Forælder/værge | `guardianships` | Kobler en voksenprofil til en børneprofil. Et barn kan have flere værger. |
 | Medlem | `club_memberships` | Profilen er medlem af foreningen. |
-| Foreningsadmin | `club_roles` (`admin`) | Fuld adgang i foreningen. `title` er fri tekst: "Formand", "Kasserer", "Bestyrelsesmedlem". |
+| Foreningsadmin | `club_roles` (`admin`) | Fuld adgang i foreningen. `title` er fri tekst: "Formand", "Bestyrelsesmedlem". |
+| Kasserer | `club_roles` (`treasurer`) | Medlemmer, kontingent og betalinger. Ingen adgang til hold og trænere. |
 | Træner / spiller | `team_members` (`coach` / `player`) | Pr. hold. Samme profil kan være træner på ét hold og spiller på et andet. |
 
 Roller er rækker, ikke et felt på profilen. Derfor kan én profil bære alle rollerne på én gang, som i eksemplet med Niklas: bestyrelsesmedlem, spiller på senior og far til Emma på U9.
@@ -33,6 +34,8 @@ Roller er rækker, ikke et felt på profilen. Derfor kan én profil bære alle r
 | Se profil | ✓ | ✓ (holdets spillere) | ✓ | ✓ |
 | Rette personoplysninger | ✓ | | ✓ | ✓ |
 | Tilføje en ekstra værge | ✓ | | | ✓ |
+
+Kassereren (`finance.manage`) og admin ser medlemslisten, styrer kontingenter og opkrævninger, registrerer og refunderer betalinger og sender rykkere. Kun admin udpeger kassereren. Man betaler selv for sig selv og sine børn (`charge.pay`); kassereren betaler ikke på andres vegne.
 
 Rollerne lægges sammen. Har man flere roller, får man summen af dem, og intet andet.
 
@@ -69,13 +72,30 @@ Hvert svar gemmer, hvilket login der trykkede (`responded_by_user_id`), så træ
 - **Hvem ser hvad:** alle på holdet ser hvem der kommer. Beskeder ("syg") og "svaret af Niklas" ser kun trænere/admins og spilleren selv eller forældrene. Forældrenes navne og telefon ser kun trænere/admins.
 - **Fremmøde** (`/hold/<id>/fremmoede`): spillere × aktiviteter for de seneste 4, 8 eller 12 uger og de næste 2, med fremmødeprocent og hvem der mangler at svare.
 
+## Medlemmer og kontingent
+
+Kassererens værktøj ligger under **Kasse** (`/kasse`), medlemmernes under **Betaling** (`/betaling`).
+
+- **Kontingentsatser** (`membership_fees`) med beløb og interval: måned, kvartal, halvår eller år. Perioderne følger kalenderen (halvår = jan–jun og jul–dec). Beløb gemmes i øre.
+- **Holdets kontingent:** hvert hold kan have et standardkontingent. Nye spillere får det automatisk, når de kommer på holdet, medmindre kassereren allerede har valgt et andet.
+- **Medlemslisten** viser hold, forældre, kontingent, gratister og hvem der skylder, med filtre (mangler kontingent, i restance, gratister, udmeldte) og søgning. Kan hentes som CSV til Excel.
+- **Gratister** (trænere, frivillige, pause) og **udmeldte** får ingen opkrævninger. Udmeldte bliver stående med historik.
+- **Opkrævning:** kassereren sender kontingent for en periode til alle aktive medlemmer på satsen. Det kan gentages uden dobbelte opkrævninger, så nye medlemmer tages med næste gang. Ekstra opkrævninger (stævne, trøje) kan sendes til ét medlem.
+- **Betaling:** forælderen eller medlemmet trykker Betal og sendes til Stripe Checkout på foreningens egen Stripe-konto (Connect). Kort, MobilePay og Apple Pay vælges i foreningens Stripe-indstillinger. HoldLiv lægger intet gebyr på.
+- **Bekræftelse** kommer fra Stripes webhook (`/api/stripe/webhook`, signaturen tjekkes). Kassereren kan også registrere kontant eller bankoverførsel, annullere og refundere.
+- **Rykkere** på mail for forfaldne opkrævninger, til forældrene for børn under 18. Højst én pr. opkrævning om ugen.
+- **Testtilstand:** uden `STRIPE_SECRET_KEY` (under udvikling eller med `DEMO_LOGIN=1`) går betalingen til en testside i appen i stedet for Stripe. Der trækkes ingen penge.
+
+Stripe sættes op med `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET`. Webhooken oprettes i Stripe som Connect-webhook med hændelserne `checkout.session.completed` og `checkout.session.async_payment_succeeded`. Kassereren kobler foreningen til Stripe med knappen under Kasse.
+
 ## Kode
 
 - `src/db/schema.ts` – datamodellen. Migrationer i `drizzle/`.
 - `src/auth/permissions.ts` – rettighedsmotoren `can()` / `assertCan()`. Ren logik uden database.
 - `src/auth/context.ts` – henter et logins roller fra databasen.
 - `src/auth/login.ts` – koder, links og sessioner.
-- `src/services/` – handlinger. `index.ts` (profiler, roller, svar), `teams.ts` (hold, familie, invitationer), `calendar.ts` (serier, aflysning, aktivitetens side, fremmøde). Alle tjekker rettigheder først.
+- `src/services/` – handlinger. `index.ts` (profiler, roller, svar), `teams.ts` (hold, familie, invitationer), `calendar.ts` (serier, aflysning, aktivitetens side, fremmøde), `finance.ts` (medlemmer, kontingent, opkrævninger, betaling, rykkere). Alle tjekker rettigheder først.
+- `src/lib/payments.ts` – Stripe Connect og testbetalingen. `src/lib/money.ts` – kroner, øre og perioder.
 - `src/lib/time.ts` – dansk tid for formularer og serier.
 - `src/app/` – web-appen. Server actions i `actions.ts`.
 - `src/db/demo.ts` – demoklubben Skovby IF.
@@ -92,9 +112,11 @@ Opdigtet forening med tre hold (U9 piger, U11 drenge, Senior herrer), 10 voksne 
 | Mette Holm | Træner U9, mor til William (U11) |
 | Jonas Krogh | Træner U11, spiller på senior |
 | Peter Dam | Træner senior |
-| Sofie Bak | Mor til Ida (U9) og Lukas (U11) |
+| Sofie Bak | Kasserer, mor til Ida (U9) og Lukas (U11) |
 | Anne og Lars Møller | Begge forældre til Freja (U9) og Kasper (U11). Lars spiller på senior |
 | Ali Hassan, Henrik Juul | Forældre og seniorspillere |
+
+Kontingent: Børn under 13 år (650 kr./halvår), Senior (1.100 kr./halvår) og Passivt medlem (200 kr./år). Trænerne er gratister. Indeværende halvår er opkrævet, og fristen er overskredet: de fleste har betalt, mens Emma, Noor, Oliver og Ali er i restance, så Niklas kan prøve at betale for Emma.
 
 Alle logger ind med `<fornavn>@holdliv.test`.
 
@@ -109,11 +131,14 @@ npm run dev                   # http://localhost:3000
 npm test                      # kræver en tom testdatabase, se TEST_DATABASE_URL i tests/db.ts
 ```
 
-Miljøvariabler: `DATABASE_URL`, `RESEND_API_KEY` og `MAIL_FROM` (rigtige mails), `APP_URL` (adressen i login-links), `DEMO_LOGIN=1` (demo-login og kode på skærmen i produktion).
+Miljøvariabler: `DATABASE_URL`, `RESEND_API_KEY` og `MAIL_FROM` (rigtige mails), `APP_URL` (adressen i login-links), `DEMO_LOGIN=1` (demo-login, kode på skærmen og testbetaling i produktion), `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET` (rigtige betalinger).
 
 ## Ikke med endnu
 
 - Push-beskeder og påmindelser til dem der ikke har svaret.
 - Kalenderabonnement (iCal) til telefonens kalender.
 - Row-level security i Postgres som ekstra sikring af foreningernes data.
-- Medlemskab og kontingent, modulmotoren pr. hold og AI-medlemsservice.
+- Automatisk korttræk og MobilePay Subscriptions (kontingentet betales i dag pr. opkrævning).
+- Forholdsmæssig pris ved indmeldelse midt i en periode, søskende-/familierabat og indmeldelsesgebyr.
+- Spærring af tilmelding ved restance, kvitteringer som PDF og bogføring/eksport til regnskab.
+- Modulmotoren pr. hold og AI-medlemsservice.

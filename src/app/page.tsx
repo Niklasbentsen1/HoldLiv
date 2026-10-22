@@ -31,7 +31,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ f
   const many = acting.length > 1;
 
   return (
-    <Shell active="/" admin={ctx.adminClubs.size > 0}>
+    <Shell active="/" ctx={ctx}>
       {fejl && <p className="error">{fejl}</p>}
       {many && (
         <div className="chips sticky">

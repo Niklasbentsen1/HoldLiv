@@ -16,7 +16,7 @@ import {
 } from "../db/schema";
 import { assertCan, isMinor, type AccessContext } from "../auth/permissions";
 import { loadEventFacts, loadProfileFacts, loadTeamFacts } from "../auth/context";
-import { newInviteCode } from "./teams";
+import { applyTeamDefaultFee, newInviteCode } from "./teams";
 
 export interface PersonInput {
   firstName: string;
@@ -132,6 +132,7 @@ export async function addTeamMember(
     .where(and(eq(clubMemberships.clubId, team.clubId), eq(clubMemberships.profileId, profileId)));
   if (!member) throw new Error("Profilen skal være medlem af foreningen først");
   await db.insert(teamMembers).values({ teamId, profileId, role }).onConflictDoNothing();
+  if (role === "player") await applyTeamDefaultFee(db, teamId, profileId);
 }
 
 export async function removeTeamMember(
@@ -253,3 +254,4 @@ export async function describeRoles(db: Db, ctx: AccessContext) {
 
 export * from "./teams";
 export * from "./calendar";
+export * from "./finance";
