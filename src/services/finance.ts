@@ -18,6 +18,7 @@ import {
 } from "../db/schema";
 import { assertCan, can, isMinor, type AccessContext } from "../auth/permissions";
 import { loadTeamFacts } from "../auth/context";
+import { logAudit } from "./audit";
 import { addDays, kr, localDate, longDate, periodContaining, periodLabel, type FeeInterval } from "../lib/money";
 import type { PaymentProvider } from "../lib/payments";
 import type { Mailer } from "../lib/mail";
@@ -56,6 +57,7 @@ export async function grantTreasurerByEmail(db: Db, ctx: AccessContext, clubId: 
     await tx.insert(clubMemberships).values({ clubId, profileId, exempt: true }).onConflictDoNothing();
     await tx.insert(clubRoles).values({ clubId, profileId, role: "treasurer", title: "Kasserer" }).onConflictDoNothing();
   });
+  await logAudit(db, { action: "club.treasurer_granted", clubId, actorUserId: ctx.userId, targetType: "profile", targetId: profileId });
 }
 
 export async function revokeTreasurer(db: Db, ctx: AccessContext, clubId: string, profileId: string) {
@@ -63,6 +65,7 @@ export async function revokeTreasurer(db: Db, ctx: AccessContext, clubId: string
   await db
     .delete(clubRoles)
     .where(and(eq(clubRoles.clubId, clubId), eq(clubRoles.profileId, profileId), eq(clubRoles.role, "treasurer")));
+  await logAudit(db, { action: "club.treasurer_revoked", clubId, actorUserId: ctx.userId, targetType: "profile", targetId: profileId });
 }
 
 export async function listTreasurers(db: Db, ctx: AccessContext, clubId: string) {
@@ -112,6 +115,7 @@ export async function createFee(db: Db, ctx: AccessContext, clubId: string, inpu
   assertCan(ctx, { action: "finance.manage", clubId });
   checkFee(input);
   const [fee] = await db.insert(membershipFees).values({ clubId, ...input, name: input.name.trim() }).returning();
+  await logAudit(db, { action: "fee.created", clubId, actorUserId: ctx.userId, targetType: "fee", targetId: fee.id, detail: { name: fee.name, amountOre: fee.amountOre } });
   return fee;
 }
 
@@ -127,6 +131,7 @@ export async function updateFee(db: Db, ctx: AccessContext, feeId: string, patch
   assertCan(ctx, { action: "finance.manage", clubId: fee.clubId });
   checkFee(patch);
   const [f] = await db.update(membershipFees).set(patch).where(eq(membershipFees.id, feeId)).returning();
+  await logAudit(db, { action: "fee.updated", clubId: fee.clubId, actorUserId: ctx.userId, targetType: "fee", targetId: feeId, detail: patch });
   return f;
 }
 
@@ -251,6 +256,7 @@ export async function updateMembership(db: Db, ctx: AccessContext, clubId: strin
     .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.profileId, profileId)))
     .returning();
   if (updated.length === 0) throw new Error("Personen er ikke medlem af foreningen");
+  await logAudit(db, { action: "member.updated", clubId, actorUserId: ctx.userId, targetType: "profile", targetId: profileId, detail: { ...patch } });
 }
 
 const csvCell = (v: unknown) => {
@@ -263,6 +269,7 @@ const csvCell = (v: unknown) => {
 /** Medlemsliste til regneark, fx til kommunens tilskud eller DIF/DGI's medlemstal. */
 export async function membersCsv(db: Db, ctx: AccessContext, clubId: string) {
   const members = await listMembers(db, ctx, clubId, { filter: "all" });
+  await logAudit(db, { action: "members.exported", clubId, actorUserId: ctx.userId, detail: { rows: members.length } });
   const header = ["Fornavn", "Efternavn", "Fødselsdato", "E-mail", "Telefon", "Hold", "Forældre", "Kontingent", "Gratist", "Status", "Indmeldt", "Udmeldt", "Skylder (kr.)"];
   const lines = members.map((m) =>
     [
@@ -348,6 +355,7 @@ export async function runCharges(db: Db, ctx: AccessContext, feeId: string, date
     )
     .onConflictDoNothing()
     .returning({ id: charges.id });
+  await logAudit(db, { action: "charges.run", clubId: fee.clubId, actorUserId: ctx.userId, targetType: "fee", targetId: feeId, detail: { created: created.length, period: period.start } });
   return { created: created.length, totalOre: created.length * fee.amountOre };
 }
 
@@ -467,6 +475,7 @@ export async function registerManualPayment(db: Db, ctx: AccessContext, chargeId
     });
     await tx.update(charges).set({ status: "paid", paidAt: ctx.now }).where(eq(charges.id, chargeId));
   });
+  await logAudit(db, { action: "charge.manual_payment", clubId: charge.clubId, actorUserId: ctx.userId, targetType: "charge", targetId: chargeId, detail: { amountOre: charge.amountOre } });
 }
 
 export async function cancelCharge(db: Db, ctx: AccessContext, chargeId: string) {
@@ -474,6 +483,7 @@ export async function cancelCharge(db: Db, ctx: AccessContext, chargeId: string)
   assertCan(ctx, { action: "finance.manage", clubId: charge.clubId });
   if (charge.status !== "open") throw new Error("Kun åbne opkrævninger kan annulleres");
   await db.update(charges).set({ status: "cancelled" }).where(eq(charges.id, chargeId));
+  await logAudit(db, { action: "charge.cancelled", clubId: charge.clubId, actorUserId: ctx.userId, targetType: "charge", targetId: chargeId });
 }
 
 /** Refundering. Kortbetalinger sendes tilbage via Stripe; manuelle betalinger markeres blot som tilbagebetalt. */
@@ -496,6 +506,7 @@ export async function refundCharge(db: Db, ctx: AccessContext, chargeId: string,
     if (payment) await tx.update(payments).set({ status: "refunded", refundedAt: ctx.now }).where(eq(payments.id, payment.id));
     await tx.update(charges).set({ status: "refunded" }).where(eq(charges.id, chargeId));
   });
+  await logAudit(db, { action: "charge.refunded", clubId: charge.clubId, actorUserId: ctx.userId, targetType: "charge", targetId: chargeId, detail: { amountOre: charge.amountOre } });
 }
 
 /** Hvem skal have besked om en opkrævning: forældrene for børn, ellers medlemmet selv. */

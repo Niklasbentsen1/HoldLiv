@@ -99,6 +99,13 @@
       "when": 1792676812098,
       "tag": "0013_nyheder",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792678027108,
+      "tag": "0014_sikkerhed",
+      "breakpoints": true
     }
   ]
 }
