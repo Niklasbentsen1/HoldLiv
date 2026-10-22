@@ -1,5 +1,5 @@
 {
-  "id": "c7cb04c2-da8a-49df-a2ba-0c1ee38ecd72",
+  "id": "0975e350-923d-4dc5-a107-e4a0cc8b3490",
   "prevId": "e2663eb9-ca70-4adf-b2a0-05eadf54613c",
   "version": "7",
   "dialect": "postgresql",
@@ -2130,6 +2130,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "endpoint": {
           "name": "endpoint",
           "type": "text",
@@ -2180,6 +2186,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "push_subscriptions_session_id_sessions_id_fk": {
+          "name": "push_subscriptions_session_id_sessions_id_fk",
+          "tableFrom": "push_subscriptions",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
           ],
           "columnsTo": [
             "id"

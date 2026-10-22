@@ -12,6 +12,7 @@ const bytesToB64 = (buf: ArrayBuffer | null) => (buf ? btoa(String.fromCharCode(
 export function PushToggle({ publicKey }: { publicKey: string | null }) {
   const [state, setState] = useState<"checking" | "unsupported" | "off" | "on" | "blocked">("checking");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !publicKey) return setState("unsupported");
@@ -25,12 +26,15 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
 
   async function turnOn() {
     setBusy(true);
+    setError(null);
     try {
       if ((await Notification.requestPermission()) !== "granted") return setState("blocked");
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey!) });
       await subscribePush({ endpoint: sub.endpoint, p256dh: bytesToB64(sub.getKey("p256dh")), auth: bytesToB64(sub.getKey("auth")) });
       setState("on");
+    } catch {
+      setError("Det lykkedes ikke at slå push til. Prøv igen om lidt.");
     } finally {
       setBusy(false);
     }
@@ -38,6 +42,7 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
 
   async function turnOff() {
     setBusy(true);
+    setError(null);
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
@@ -46,6 +51,8 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
         await sub.unsubscribe();
       }
       setState("off");
+    } catch {
+      setError("Det lykkedes ikke at slå push fra. Prøv igen om lidt.");
     } finally {
       setBusy(false);
     }
@@ -60,6 +67,7 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
       <button type="button" className="btn" disabled={busy} onClick={state === "on" ? turnOff : turnOn}>
         {state === "on" ? "Slå fra her" : "Slå til her"}
       </button>
+      {error && <span className="small" role="alert">{error}</span>}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { loadAccessContext } from "../src/auth/context";
 import { ForbiddenError } from "../src/auth/permissions";
 import { notificationPrefs, notifications, pushSubscriptions } from "../src/db/schema";
 import { normalizePhone } from "../src/lib/sms";
+import { createSession, deleteSession, sha256 } from "../src/auth/login";
 import { PushGoneError } from "../src/lib/push";
 import {
   getNotificationPrefs,
@@ -296,12 +297,20 @@ describe("påmindelser om ubesvarede aktiviteter", () => {
 });
 
 describe("push i browseren", () => {
+  const tokens = new Map<string, string>();
+  /** Abonnementet hører til en session, som i appen. */
+  const save = async (who: keyof typeof demo.users, name: string) => {
+    const { token } = await createSession(db, demo.users[who].user.id);
+    tokens.set(`${who}:${name}`, token);
+    await savePushSubscription(db, await ctxOf(who), sha256(token), sub(name));
+    return token;
+  };
   const sub = (name: string) => ({ endpoint: `https://push.test/${name}`, p256dh: "k", auth: "a" });
   const change = async () => updateEventNotifying(db, await ctxOf("mette"), deliver, training().id, { location: `Bane ${Math.random()}` });
 
   it("sender kun til logins med et abonnement og ingen post for de andre", async () => {
-    await savePushSubscription(db, await ctxOf("ali"), sub("ali-telefon"));
-    await savePushSubscription(db, await ctxOf("ali"), sub("ali-pc"));
+    await save("ali", "ali-telefon");
+    await save("ali", "ali-pc");
     await change();
     expect(pushes.map((p) => p.to).sort()).toEqual(["https://push.test/ali-pc", "https://push.test/ali-telefon"]);
     expect(pushes[0].payload.url).toBe(`/aktivitet/${training().id}`);
@@ -310,7 +319,7 @@ describe("push i browseren", () => {
   });
 
   it("følger kanalvalget, og et nægtet abonnement ryddes væk", async () => {
-    await savePushSubscription(db, await ctxOf("sofie"), sub("sofie-gone"));
+    await save("sofie", "sofie-gone");
     await change();
     expect(pushes.map((p) => p.to)).not.toContain("https://push.test/sofie-gone");
     expect(await sql`select 1 from push_subscriptions where endpoint = 'https://push.test/sofie-gone'`).toHaveLength(0);
@@ -320,17 +329,28 @@ describe("push i browseren", () => {
   });
 
   it("en fejl hos push-tjenesten afviser ikke ændringen og noteres som fejlet", async () => {
-    await savePushSubscription(db, await ctxOf("anne"), sub("anne-broken"));
+    await save("anne", "anne-broken");
     const e = await change();
     expect(e.location).toMatch(/^Bane /);
     const [row] = await sql`select status from notifications where channel = 'push' and user_id = ${demo.users.anne.user.id}`;
     expect(row.status).toBe("failed");
   });
 
+  it("logger man ud eller udløber sessionen, holder push op", async () => {
+    const out = await save("ali", "ali-udlogget");
+    const expired = await save("anne", "anne-udloebet");
+    await save("sofie", "sofie-aktiv");
+    await deleteSession(db, out);
+    await sql`update sessions set expires_at = now() - interval '1 minute' where id = ${sha256(expired)}`;
+    await change();
+    expect(pushes.map((p) => p.to)).toEqual(["https://push.test/sofie-aktiv"]);
+    expect(await sql`select 1 from push_subscriptions where endpoint = 'https://push.test/ali-udlogget'`).toHaveLength(0);
+  });
+
   it("uden push-udbyder springes over, og man kan afmelde og skifte login", async () => {
     await sql`delete from push_subscriptions`;
-    await savePushSubscription(db, await ctxOf("ali"), sub("delt"));
-    await savePushSubscription(db, await ctxOf("anne"), sub("delt"));
+    await save("ali", "delt");
+    await save("anne", "delt");
     expect(await sql`select user_id from push_subscriptions where endpoint = 'https://push.test/delt'`).toEqual([{ user_id: demo.users.anne.user.id }]);
     await updateEventNotifying(db, await ctxOf("mette"), { ...deliver, push: null }, training().id, { location: "Bane X" });
     const [row] = await sql`select status, error from notifications where channel = 'push'`;
@@ -339,6 +359,6 @@ describe("push i browseren", () => {
     expect(await sql`select 1 from push_subscriptions`).toHaveLength(1);
     await removePushSubscription(db, await ctxOf("anne"), "https://push.test/delt");
     expect(await sql`select 1 from push_subscriptions`).toHaveLength(0);
-    await expect(savePushSubscription(db, await ctxOf("ali"), { endpoint: "http://x", p256dh: "k", auth: "a" })).rejects.toThrow(/ugyldigt/);
+    await expect(savePushSubscription(db, await ctxOf("ali"), "x", { endpoint: "http://x", p256dh: "k", auth: "a" })).rejects.toThrow(/ugyldigt/);
   });
 });

@@ -9,7 +9,7 @@
 //   - dedupe_key sørger for, at den samme besked ikke sendes to gange til samme login på samme kanal.
 import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { eventResponses, events, guardianships, notificationPrefs, notifications, profiles, pushSubscriptions, teamMembers, teams, users } from "../db/schema";
+import { eventResponses, events, guardianships, notificationPrefs, notifications, profiles, pushSubscriptions, sessions, teamMembers, teams, users } from "../db/schema";
 import { isMinor, type AccessContext } from "../auth/permissions";
 import { CHANNELS, DEFAULT_ENABLED, KINDS, type Channel, type Kind } from "../lib/notify";
 import { normalizePhone, type SmsSender } from "../lib/sms";
@@ -113,7 +113,11 @@ export async function notifyUsers(db: Db, deliver: Deliver, recipients: Recipien
     ? await db.select().from(notificationPrefs).where(and(inArray(notificationPrefs.userId, recipients.map((r) => r.userId)), eq(notificationPrefs.kind, msg.kind)))
     : [];
   const subs = recipients.length
-    ? await db.select().from(pushSubscriptions).where(inArray(pushSubscriptions.userId, recipients.map((r) => r.userId)))
+    ? await db
+        .select({ id: pushSubscriptions.id, userId: pushSubscriptions.userId, endpoint: pushSubscriptions.endpoint, p256dh: pushSubscriptions.p256dh, auth: pushSubscriptions.auth })
+        .from(pushSubscriptions)
+        .innerJoin(sessions, eq(sessions.id, pushSubscriptions.sessionId))
+        .where(and(inArray(pushSubscriptions.userId, recipients.map((r) => r.userId)), gt(sessions.expiresAt, new Date())))
     : [];
   const footer = `\n\nVil du have beskeder på en anden måde? Ret det her: ${deliver.baseUrl}/indstillinger`;
 
@@ -374,13 +378,13 @@ export interface PushSubscriptionInput {
   auth: string;
 }
 
-/** Gemmer browserens abonnement på det loggede ind login. Samme browser kan skifte login, så endpoint overtages. */
-export async function savePushSubscription(db: Db, ctx: AccessContext, sub: PushSubscriptionInput) {
+/** Gemmer browserens abonnement på det loggede ind login og dets session. Samme browser kan skifte login, så endpoint overtages. */
+export async function savePushSubscription(db: Db, ctx: AccessContext, sessionId: string, sub: PushSubscriptionInput) {
   if (!/^https:\/\//.test(sub.endpoint) || !sub.p256dh || !sub.auth) throw new Error("Browseren sendte et ugyldigt push-abonnement.");
   await db
     .insert(pushSubscriptions)
-    .values({ userId: ctx.userId, ...sub })
-    .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { userId: ctx.userId, p256dh: sub.p256dh, auth: sub.auth } });
+    .values({ userId: ctx.userId, sessionId, ...sub })
+    .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { userId: ctx.userId, sessionId, p256dh: sub.p256dh, auth: sub.auth } });
 }
 
 export async function removePushSubscription(db: Db, ctx: AccessContext, endpoint: string) {

@@ -1,10 +1,10 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { canActAs, ForbiddenError } from "../auth/permissions";
-import { LoginError, requestLogin, verifyCode } from "../auth/login";
+import { LoginError, requestLogin, sha256, verifyCode } from "../auth/login";
 import {
   addCoachByEmail,
   addGuardianByEmail,
@@ -72,7 +72,7 @@ import { sendLoginMail, sendMail } from "../lib/mail";
 import { CHANNELS, KINDS } from "../lib/notify";
 import { getPushSender } from "../lib/push";
 import { getSmsSender } from "../lib/sms";
-import { endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
+import { SESSION_COOKIE, endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
 import { parseLocalDateTime } from "../lib/time";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -565,7 +565,9 @@ export async function saveNotificationPrefs(formData: FormData) {
 
 export async function subscribePush(sub: { endpoint: string; p256dh: string; auth: string }) {
   const { ctx } = await requireSession();
-  await savePushSubscription(db, ctx, sub);
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) throw new Error("Du er ikke logget ind.");
+  await savePushSubscription(db, ctx, sha256(token), sub);
   revalidatePath("/indstillinger");
 }
 
