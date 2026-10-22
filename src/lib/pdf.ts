@@ -9,7 +9,9 @@ export interface PdfLine {
 
 const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 // Tegn uden for Windows-1252 erstattes med ?, så filen altid er gyldig.
-const win1252 = (s: string) => Buffer.from(esc(s.replace(/[^\u0000-ÿ€–—‘’“”]/g, "?")), "latin1");
+const WIN1252: Record<string, number> = { "€": 0x80, "‘": 0x91, "’": 0x92, "“": 0x93, "”": 0x94, "–": 0x96, "—": 0x97 };
+const win1252 = (s: string) =>
+  Buffer.from([...esc(s)].map((ch) => (WIN1252[ch] ?? (ch.codePointAt(0)! <= 0xff ? ch.codePointAt(0)! : 0x3f))));
 
 export function simplePdf(lines: PdfLine[]): Buffer {
   let y = 790;

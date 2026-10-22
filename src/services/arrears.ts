@@ -1,5 +1,5 @@
 // Spærring ved restance: har foreningen sat en grænse, kan et medlem med en forfalden, ubetalt opkrævning ikke tilmelde sig nye hold.
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { charges, clubs } from "../db/schema";
 import { addDays } from "../lib/money";
@@ -14,6 +14,6 @@ export async function blockedProfileIds(db: Reader, clubId: string, profileIds: 
   const rows = await db
     .selectDistinct({ profileId: charges.profileId })
     .from(charges)
-    .where(and(eq(charges.clubId, clubId), eq(charges.status, "open"), inArray(charges.profileId, profileIds), lte(charges.dueDate, addDays(today, -c.days)), sql`${charges.amountOre} > 0`));
+    .where(and(eq(charges.clubId, clubId), eq(charges.status, "open"), inArray(charges.profileId, profileIds), lt(charges.dueDate, addDays(today, -c.days)), sql`${charges.amountOre} > 0`));
   return new Set(rows.map((r) => r.profileId));
 }

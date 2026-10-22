@@ -1,7 +1,7 @@
 // Medlemmer, kontingent og betaling: kassererens værktøj og forældrenes betalingsside.
 // Kassereren (og admin) styrer satser, opkrævninger og registrerer betalinger.
 // Medlemmet selv eller forælderen betaler. Pengene går direkte til foreningens egen Stripe-konto.
-import { and, asc, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import {
   charges,
@@ -380,8 +380,9 @@ async function priceRun(db: Db, fee: typeof membershipFees.$inferSelect, period:
   const candidates = await chargeRunCandidates(db, fee.id, period.start);
   const ranks = await siblingRanks(db, fee, candidates.map((c) => c.profileId));
   const joined = candidates.length
-    ? await db.select({ profileId: charges.profileId }).from(charges).where(and(eq(charges.clubId, fee.clubId), eq(charges.kind, "join_fee"), inArray(charges.profileId, candidates.map((c) => c.profileId))))
+    ? await db.select({ profileId: charges.profileId }).from(charges).where(and(eq(charges.clubId, fee.clubId), or(eq(charges.kind, "join_fee"), isNotNull(charges.feeId)), inArray(charges.profileId, candidates.map((c) => c.profileId))))
     : [];
+  // Gebyret gives kun ved medlemmets første kontingentopkrævning i foreningen; et medlem, der allerede har betalt kontingent, er ikke nyt.
   const hasJoinFee = new Set(joined.map((j) => j.profileId));
   return candidates.map((m) => {
     const price = priceCharge({

@@ -97,6 +97,22 @@ describe("opkrævning med foreningens egne regler", () => {
     expect(next).toMatchObject({ created: 4, joinFees: 0 });
   });
 
+  it("giver ikke indmeldelsesgebyr til et medlem, der allerede har betalt kontingent", async () => {
+    const fee = await createFee(db, admin, clubId, { name: "Gamle", amountOre: 50_000, interval: "half_year" });
+    const [m] = await db.insert(profiles).values({ firstName: "Gammel", lastName: "Medlem", birthDate: "1980-01-01" }).returning();
+    await db.insert(clubMemberships).values({ clubId, profileId: m.id, feeId: fee.id, joinedAt: new Date("2019-03-01T00:00:00Z") });
+    expect(await runCharges(db, admin, fee.id, "2026-07-02")).toMatchObject({ created: 1, joinFees: 0 });
+    // Foreningen indfører først et gebyr nu: det gamle medlem skal stadig ikke have det, men et nyt skal.
+    await updateFee(db, admin, fee.id, { joinFeeOre: 20_000 });
+    const [nyt] = await db.insert(profiles).values({ firstName: "Ny", lastName: "Medlem", birthDate: "1981-01-01" }).returning();
+    await db.insert(clubMemberships).values({ clubId, profileId: nyt.id, feeId: fee.id, joinedAt: new Date("2026-12-01T00:00:00Z") });
+    const preview = await previewChargeRun(db, admin, fee.id, "2027-01-02");
+    expect(preview.members.find((x) => x.profileId === m.id)!.joinFeeOre).toBe(0);
+    expect(preview.members.find((x) => x.profileId === nyt.id)!.joinFeeOre).toBe(20_000);
+    await db.delete(clubMemberships).where(eq(clubMemberships.profileId, nyt.id));
+    await db.update(clubMemberships).set({ feeId: null }).where(eq(clubMemberships.profileId, m.id));
+  });
+
   it("opkræver forholdsmæssigt for et nyt medlem og håndterer rabat på 100 % som betalt", async () => {
     const fresh = await child("Ny", 2017, []);
     await db.update(clubMemberships).set({ joinedAt: new Date("2027-10-01T10:00:00Z") }).where(eq(clubMemberships.profileId, fresh));
@@ -166,6 +182,9 @@ describe("kvittering", () => {
     const text = pdf.toString("latin1");
     expect(text.startsWith("%PDF-1.4")).toBe(true);
     expect(text.trimEnd().endsWith("%%EOF")).toBe(true);
+    expect(pdf.includes(Buffer.from("Kvittering \u2013 S", "latin1"))).toBe(false);
+    expect(pdf.includes(Buffer.from("Kvittering \x96 S\u00f8ren", "latin1"))).toBe(true);
+    expect(simplePdf([{ text: "10 \u20ac \u201cX\u201d" }]).includes(Buffer.from([0x31, 0x30, 0x20, 0x80, 0x20, 0x93, 0x58, 0x94]))).toBe(true);
     expect(pdf.includes(Buffer.from("S\u00f8ren \u00c6r\u00f8 \\(\u00d8deg\u00e5rd\\)", "latin1"))).toBe(true);
     const xrefPos = Number(/startxref\n(\d+)/.exec(text)![1]);
     expect(text.slice(xrefPos, xrefPos + 4)).toBe("xref");

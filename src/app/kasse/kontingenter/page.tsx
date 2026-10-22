@@ -175,7 +175,7 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
       <form action={saveArrearsBlock} className="inline">
         <input type="hidden" name="clubId" value={club.id} />
         <label className="grow">
-          Spær for nye hold efter så mange dages restance <span className="muted">(tomt = ingen spærring)</span>
+          Spær for nye hold efter så mange dages restance <span className="muted">(tomt = ingen spærring; gælder tilmelding via invitationslink)</span>
           <input name="days" type="number" min={0} max={365} defaultValue={club.arrearsBlockDays ?? ""} />
         </label>
         <button>Gem</button>
