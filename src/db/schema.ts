@@ -419,5 +419,10 @@ export const teamTasks = pgTable(
     createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
-  (t) => [index("team_tasks_team_idx").on(t.teamId, t.kind), index("team_tasks_event_idx").on(t.eventId)],
+  (t) => [
+    index("team_tasks_team_idx").on(t.teamId, t.kind),
+    index("team_tasks_event_idx").on(t.eventId),
+    // Højst én frugtopgave pr. aktivitet, også når to trykker samtidig.
+    uniqueIndex("team_tasks_one_fruit_per_event").on(t.eventId).where(sql`${t.kind} = 'fruit'`),
+  ],
 );

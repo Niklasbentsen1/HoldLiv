@@ -20,4 +20,5 @@ ALTER TABLE "team_tasks" ADD CONSTRAINT "team_tasks_assignee_profile_id_profiles
 ALTER TABLE "team_tasks" ADD CONSTRAINT "team_tasks_done_by_user_id_users_id_fk" FOREIGN KEY ("done_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "team_tasks" ADD CONSTRAINT "team_tasks_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "team_tasks_team_idx" ON "team_tasks" USING btree ("team_id","kind");--> statement-breakpoint
-CREATE INDEX "team_tasks_event_idx" ON "team_tasks" USING btree ("event_id");
+CREATE INDEX "team_tasks_event_idx" ON "team_tasks" USING btree ("event_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "team_tasks_one_fruit_per_event" ON "team_tasks" USING btree ("event_id") WHERE "team_tasks"."kind" = 'fruit';

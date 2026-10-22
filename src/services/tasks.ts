@@ -13,6 +13,8 @@ import { distribute, type FamilyLoad } from "../modules/fairness";
 import { requireModule } from "./modules";
 
 export type TaskKind = "fruit" | "task";
+/** Frugt hører til træninger og kampe, ikke til fx forældremøder. */
+const FRUIT_EVENT_TYPES = ["training", "match"];
 export const TASK_KIND_LABEL: Record<TaskKind, string> = { fruit: "Frugt", task: "Opgave" };
 
 type Reader = Pick<Db, "select">;
@@ -24,12 +26,14 @@ interface Family {
   assigneeId: string;
   name: string;
   playerIds: string[];
+  /** Hvornår den første af familiens spillere kom på holdet. */
+  joinedAt: number;
 }
 
 /** Holdets familier. Spillere med de samme værger er én familie; spillere uden værger står for sig selv. */
 async function loadFamilies(db: Reader, teamId: string): Promise<Family[]> {
   const players = await db
-    .select({ id: profiles.id, firstName: profiles.firstName, lastName: profiles.lastName })
+    .select({ id: profiles.id, firstName: profiles.firstName, lastName: profiles.lastName, joinedAt: teamMembers.createdAt })
     .from(teamMembers)
     .innerJoin(profiles, eq(profiles.id, teamMembers.profileId))
     .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.role, "player")))
@@ -47,8 +51,9 @@ async function loadFamilies(db: Reader, teamId: string): Promise<Family[]> {
     if (existing) {
       existing.playerIds.push(p.id);
       existing.name = `${existing.name} og ${p.firstName}`;
+      existing.joinedAt = Math.min(existing.joinedAt, p.joinedAt.getTime());
     } else {
-      byKey.set(key, { key, assigneeId: p.id, name: `${p.firstName} ${p.lastName}`, playerIds: [p.id] });
+      byKey.set(key, { key, assigneeId: p.id, name: `${p.firstName} ${p.lastName}`, playerIds: [p.id], joinedAt: p.joinedAt.getTime() });
     }
   }
   return [...byKey.values()];
@@ -103,13 +108,17 @@ export async function deleteTask(db: Db, ctx: AccessContext, taskId: string) {
   await db.delete(teamTasks).where(eq(teamTasks.id, taskId));
 }
 
-/** Familiernes belastning for én slags opgave: antal opgaver indtil nu og hvornår de sidst fik en. */
+/**
+ * Familiernes belastning for én slags opgave: antal opgaver indtil nu og hvornår de sidst fik en.
+ * En familie, der først kom på holdet efter at fordelingen var begyndt, starter ikke på nul, men på laveste
+ * belastning blandt de øvrige, så den ikke får alle de næste opgaver på én gang.
+ */
 async function familyLoads(db: Reader, teamId: string, kind: TaskKind, families: Family[]): Promise<FamilyLoad[]> {
   const rows = await db
     .select({ assignee: teamTasks.assigneeProfileId, assignedAt: teamTasks.assignedAt })
     .from(teamTasks)
     .where(and(eq(teamTasks.teamId, teamId), eq(teamTasks.kind, kind), sql`${teamTasks.assigneeProfileId} is not null`));
-  return families.map((f) => {
+  const loads = families.map((f) => {
     const mine = rows.filter((r) => r.assignee && f.playerIds.includes(r.assignee));
     return {
       key: f.key,
@@ -117,8 +126,14 @@ async function familyLoads(db: Reader, teamId: string, kind: TaskKind, families:
       name: f.name,
       load: mine.length,
       lastAt: Math.max(0, ...mine.map((r) => r.assignedAt?.getTime() ?? 0)),
+      joinedAt: f.joinedAt,
     };
   });
+  const firstAssigned = Math.min(...rows.map((r) => r.assignedAt?.getTime() ?? Infinity));
+  const late = (l: (typeof loads)[number]) => l.load === 0 && l.joinedAt > firstAssigned;
+  const established = loads.filter((l) => !late(l));
+  const floor = established.length ? Math.min(...established.map((l) => l.load)) : 0;
+  return loads.map(({ joinedAt: _joinedAt, ...l }) => (late({ ...l, joinedAt: _joinedAt }) ? { ...l, load: floor } : l));
 }
 
 /**
@@ -138,7 +153,8 @@ export async function distributeOpenTasks(db: Db, ctx: AccessContext, teamId: st
       .where(and(eq(teamTasks.teamId, teamId), isNull(teamTasks.assigneeProfileId), isNull(teamTasks.doneAt), ...(kind ? [eq(teamTasks.kind, kind)] : [])))
       .orderBy(asc(events.startsAt), asc(teamTasks.createdAt))
       .for("update", { of: teamTasks });
-    const live = open.filter((t) => !t.cancelledAt);
+    // Opgaver til aflyste eller overståede aktiviteter fordeles ikke.
+    const live = open.filter((t) => !t.cancelledAt && !(t.startsAt && t.startsAt.getTime() <= ctx.now.getTime()));
     if (live.length === 0) return 0;
     const families = await loadFamilies(tx, teamId);
     if (families.length === 0) throw new Error("Holdet har ingen spillere at fordele til.");
@@ -149,7 +165,7 @@ export async function distributeOpenTasks(db: Db, ctx: AccessContext, teamId: st
           .from(eventResponses)
           .where(and(inArray(eventResponses.eventId, eventIds), eq(eventResponses.status, "no")))
       : [];
-    const now = Date.now();
+    const now = ctx.now.getTime();
     let assigned = 0;
     for (const k of ["fruit", "task"] as const) {
       const items = live.filter((t) => t.kind === k);
@@ -183,18 +199,18 @@ export async function createFruitList(db: Db, ctx: AccessContext, teamId: string
   const { team } = await requireModule(db, ctx, teamId, "tasks");
   if (!leads(ctx, team)) throw new Error("Kun trænere og administratorer laver frugtlister.");
   if (eventIds.length === 0) throw new Error("Vælg mindst én aktivitet.");
-  for (const id of eventIds) await assertTeamEvent(db, teamId, id);
-  const have = await db
-    .select({ eventId: teamTasks.eventId })
-    .from(teamTasks)
-    .where(and(eq(teamTasks.teamId, teamId), eq(teamTasks.kind, "fruit"), inArray(teamTasks.eventId, eventIds)));
-  const haveIds = new Set(have.map((h) => h.eventId));
-  const fresh = [...new Set(eventIds)].filter((id) => !haveIds.has(id));
-  if (fresh.length) {
-    await db.insert(teamTasks).values(fresh.map((eventId) => ({ teamId, kind: "fruit" as const, title: "Frugt", eventId, createdByUserId: ctx.userId })));
-  }
+  const unique = [...new Set(eventIds)];
+  for (const id of unique) await assertTeamEvent(db, teamId, id);
+  const rows = await db.select({ id: events.id, type: events.type }).from(events).where(inArray(events.id, unique));
+  if (rows.some((r) => !FRUIT_EVENT_TYPES.includes(r.type))) throw new Error("Frugt hører til træninger og kampe.");
+  // Det unikke indeks på frugt pr. aktivitet gør, at to samtidige kald ikke giver dobbelte opgaver.
+  const created = await db
+    .insert(teamTasks)
+    .values(unique.map((eventId) => ({ teamId, kind: "fruit" as const, title: "Frugt", eventId, createdByUserId: ctx.userId })))
+    .onConflictDoNothing()
+    .returning({ id: teamTasks.id });
   await distributeOpenTasks(db, ctx, teamId, "fruit");
-  return fresh.length;
+  return created.length;
 }
 
 /** Træner/admin skriver en opgave på en bestemt familie (eller fjerner familien igen med null). */
@@ -324,7 +340,7 @@ export async function listFruitCandidates(db: Db, ctx: AccessContext, teamId: st
   const rows = await db
     .select({ id: events.id, title: events.title, type: events.type, startsAt: events.startsAt })
     .from(events)
-    .where(and(eq(events.teamId, teamId), gt(events.startsAt, ctx.now), isNull(events.cancelledAt)))
+    .where(and(eq(events.teamId, teamId), gt(events.startsAt, ctx.now), isNull(events.cancelledAt), inArray(events.type, ["training", "match"])))
     .orderBy(asc(events.startsAt))
     .limit(limit + have.size);
   return rows.filter((r) => !have.has(r.id)).slice(0, limit);

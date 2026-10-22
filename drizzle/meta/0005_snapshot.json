@@ -1,5 +1,5 @@
 {
-  "id": "bce3392b-c9df-4ac2-a6b3-2df9948be810",
+  "id": "22e10013-d217-437f-8e8f-6d9d1f5f02c3",
   "prevId": "d193d4db-3561-4924-87a9-eac17eb08153",
   "version": "7",
   "dialect": "postgresql",
@@ -1998,6 +1998,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "team_tasks_one_fruit_per_event": {
+          "name": "team_tasks_one_fruit_per_event",
+          "columns": [
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"team_tasks\".\"kind\" = 'fruit'",
           "concurrently": false,
           "method": "btree",
           "with": {}

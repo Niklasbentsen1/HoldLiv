@@ -156,6 +156,46 @@ describe("opgaver", () => {
     }
   });
 
+  it("to samtidige frugtlister giver ikke dobbelte opgaver, og frugt hører ikke til forældremøder", async () => {
+    const mette = await ctxOf("mette");
+    const [e] = await listFruitCandidates(db, mette, u9, 1);
+    const results = await Promise.all([createFruitList(db, mette, u9, [e.id]), createFruitList(db, mette, u9, [e.id])]);
+    expect(results.reduce((a, b) => a + b, 0)).toBe(1);
+    const [{ n }] = await sql`select count(*)::int as n from team_tasks where event_id = ${e.id} and kind = 'fruit'`;
+    expect(n).toBe(1);
+    const meeting = (await sql`select id from events where team_id = ${u9} and type = 'other' and starts_at > now() limit 1`)[0];
+    expect(meeting).toBeTruthy();
+    await expect(createFruitList(db, mette, u9, [meeting.id])).rejects.toThrow(/træninger og kampe/);
+    expect((await listFruitCandidates(db, mette, u9, 50)).map((c) => c.id)).not.toContain(meeting.id);
+  });
+
+  it("en ny familie på holdet starter ikke på nul og får ikke alle de næste frugtdage", async () => {
+    const admin = await ctxOf("karen");
+    const peter = await ctxOf("peter");
+    const senior = demo.teams.senior.id;
+    await setTeamModule(db, admin, senior, "tasks", true);
+    const events = await listFruitCandidates(db, peter, senior, 12);
+    expect(events.length).toBeGreaterThanOrEqual(12);
+    // Fem spillere, ti frugtdage: to hver.
+    await createFruitList(db, peter, senior, events.slice(0, 10).map((e) => e.id));
+    expect((await listTasks(db, peter, senior)).families.map((f) => f.fruit)).toEqual([2, 2, 2, 2, 2]);
+    // Mette kommer på holdet som spiller og får højst én af de næste to.
+    await sql`insert into team_members(team_id, profile_id, role) values (${senior}, ${demo.users.mette.profile.id}, 'player')`;
+    await createFruitList(db, peter, senior, events.slice(10, 12).map((e) => e.id));
+    const fam = (await listTasks(db, peter, senior)).families;
+    expect(fam.find((f) => f.name.startsWith("Mette"))!.fruit).toBe(1);
+    expect(fam.map((f) => f.fruit).sort()).toEqual([1, 2, 2, 2, 2, 3]);
+  });
+
+  it("fordeler ikke opgaver til aktiviteter der er overstået", async () => {
+    const mette = await ctxOf("mette");
+    const past = (await sql`select id from events where team_id = ${u9} and starts_at < now() and cancelled_at is null limit 1`)[0];
+    const t = await createTask(db, mette, u9, { kind: "task", title: "Gammel", eventId: past.id });
+    await distributeOpenTasks(db, mette, u9, "task");
+    expect((await sql`select assignee_profile_id from team_tasks where id = ${t.id}`)[0].assignee_profile_id).toBeNull();
+    await deleteTask(db, mette, t.id);
+  });
+
   it("søskende på samme hold er én familie", async () => {
     // Lukas og Kasper har ikke samme værger i demoen, så lav et søskendepar på U9: Anne har Freja og Kasper.
     await sql`insert into team_members(team_id, profile_id, role) values (${u9}, ${kid("kasper")}, 'player')`;
