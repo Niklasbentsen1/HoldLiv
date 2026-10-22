@@ -176,7 +176,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ f
           )}
 
           <div className="tiles">
-            <Stat label="Mangler dit svar" value={unanswered} icon="bell" tone={unanswered ? "volt" : undefined} hint={unanswered ? "Svar, så træneren kan planlægge" : "Du har svaret på alt"} />
+            <Stat label="Mangler dit svar" value={unanswered} icon="bell" tone={unanswered ? "tint" : undefined} hint={unanswered ? "Svar, så træneren kan planlægge" : "Du har svaret på alt"} />
             <Stat label="Næste 7 dage" value={weekCount} icon="calendar" hint={weekCount === 1 ? "aktivitet" : "aktiviteter"}>
               <Bars values={perDay.map((l) => l.length)} labels={week.map((d) => weekdayShort(d).slice(0, 2))} highlight={0} />
             </Stat>
@@ -274,7 +274,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ f
 
         <aside className="dash-side">
           {coached.length > 0 && (
-            <section className="card ink stack">
+            <section className="card stack">
               <div className="section-head" style={{ marginBottom: 0 }}>
                 <h2>Dine hold som træner</h2>
               </div>
@@ -283,7 +283,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ f
                   <Ring value={c.rate} size={58} stroke={7} />
                   <span className="grow">
                     <strong className="block">{teamName.get(c.teamId)}</strong>
-                    <span className="small" style={{ color: "var(--on-ink-muted)" }}>
+                    <span className="small muted">
                       {c.missing ? `${c.missing} af ${c.players} mangler at svare` : `${c.players} spillere, alle har svaret`}
                     </span>
                   </span>

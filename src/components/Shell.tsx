@@ -128,7 +128,7 @@ export function Bare({ children }: { children: ReactNode }) {
               </span>
             </div>
             <div className="float-card two">
-              <Ring value={86} size={70} stroke={9} tone="ink" />
+              <Ring value={86} size={70} stroke={9} />
               <span>
                 <small>Fremmøde</small>
                 <strong>U11 drenge</strong>

@@ -94,7 +94,7 @@ export function Crest({ name, size = 44 }: { name: string; size?: number }) {
 }
 
 /** Procent som ring. value 0-100, null vises som tom ring. */
-export function Ring({ value, size = 64, stroke = 8, label, tone = "volt" }: { value: number | null; size?: number; stroke?: number; label?: string; tone?: "volt" | "yes" | "ink" }) {
+export function Ring({ value, size = 64, stroke = 8, label, tone = "brand" }: { value: number | null; size?: number; stroke?: number; label?: string; tone?: "brand" | "yes" }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const v = Math.max(0, Math.min(100, value ?? 0));
@@ -134,7 +134,7 @@ export function Bars({ values, labels, highlight }: { values: number[]; labels?:
   );
 }
 
-export function Stat({ label, value, icon, hint, tone, children }: { label: string; value: ReactNode; icon?: IconName; hint?: ReactNode; tone?: "volt" | "ink"; children?: ReactNode }) {
+export function Stat({ label, value, icon, hint, tone, children }: { label: string; value: ReactNode; icon?: IconName; hint?: ReactNode; tone?: "brand" | "tint"; children?: ReactNode }) {
   return (
     <div className={tone ? `stat card ${tone}` : "stat card"}>
       <div className="stat-top">

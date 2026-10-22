@@ -41,9 +41,9 @@ export default async function Attendance({ params, searchParams }: { params: Pro
       />
 
       <div className="tiles" style={{ marginBottom: 20 }}>
-        <Stat label="Gennemsnit" tone="ink" value={<Ring value={avg} size={92} stroke={10} />} icon="chart" hint={<span style={{ color: "var(--on-ink-muted)" }}>Fremmøde pr. spiller</span>} />
+        <Stat label="Gennemsnit" tone="brand" value={<Ring value={avg} size={92} stroke={10} />} icon="chart" hint={<span style={{ color: "var(--on-feature-muted)" }}>Fremmøde pr. spiller</span>} />
         <Stat label="Afholdt" value={held} icon="whistle" hint="aktiviteter i perioden" />
-        <Stat label="Mangler svar" value={missing.length} tone={missing.length ? "volt" : undefined} icon="bell" hint="spillere, på kommende aktiviteter" />
+        <Stat label="Mangler svar" value={missing.length} tone={missing.length ? "tint" : undefined} icon="bell" hint="spillere, på kommende aktiviteter" />
       </div>
 
       <div className="card matrix-wrap">

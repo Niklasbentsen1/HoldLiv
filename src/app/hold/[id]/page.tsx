@@ -41,7 +41,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
               <Link href={`/hold/${id}/fremmoede`} className="button">
                 <Icon name="chart" size={18} /> Fremmøde
               </Link>
-              <Link href={`/hold/${id}/ny`} className="button accent">
+              <Link href={`/hold/${id}/ny`} className="button primary">
                 <Icon name="plus" size={18} /> Ny aktivitet
               </Link>
             </>
@@ -55,10 +55,10 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
         <Stat label="Aktiviteter" value={events.filter((e) => !e.cancelledAt).length} icon="calendar" hint={`de næste ${WEEKS_AHEAD} uger`} />
         <Stat
           label="Næste"
-          tone="ink"
+          tone="brand"
           icon={next ? TYPE_ICON[next.type] : "calendar"}
           value={next ? <span style={{ fontSize: 30 }}>{time(next.startsAt)}</span> : "–"}
-          hint={next ? <span style={{ color: "var(--on-ink-muted)" }}>{shortDay(next.startsAt)} · {next.yes} kommer</span> : "Intet planlagt"}
+          hint={next ? <span style={{ color: "var(--on-feature-muted)" }}>{shortDay(next.startsAt)} · {next.yes} kommer</span> : "Intet planlagt"}
         />
       </div>
 
@@ -128,7 +128,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
                   <span className="name grow">
                     {c.firstName} {c.lastName}
                   </span>
-                  <span className="pill volt">Træner</span>
+                  <span className="pill brand">Træner</span>
                 </li>
               ))}
               {team.coaches.length === 0 && <li className="muted">Ingen træner endnu</li>}
@@ -177,7 +177,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
           </section>
 
           {team.inviteCode && (
-            <section className="card volt invite">
+            <section className="card tint invite">
               <div className="stat-top">
                 <strong>Invitér spillere og forældre</strong>
                 <span className="icon-bubble">
@@ -185,10 +185,10 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
                 </span>
               </div>
               <p className="small">Del linket i fx holdets Facebook- eller Messenger-gruppe. Forældre logger ind, vælger deres barn og er med på holdet.</p>
-              <input readOnly value={`${origin}/join/${team.inviteCode}`} className="mono" style={{ background: "rgb(255 255 255 / 60%)", color: "var(--volt-ink)" }} />
+              <input readOnly value={`${origin}/join/${team.inviteCode}`} className="mono" style={{ background: "var(--surface)" }} />
               <form action={newInviteLink}>
                 <input type="hidden" name="teamId" value={id} />
-                <button className="link small" style={{ color: "var(--volt-ink)" }}>
+                <button className="link small" style={{ color: "var(--brand-ink)" }}>
                   Lav et nyt link (det gamle holder op med at virke)
                 </button>
               </form>
