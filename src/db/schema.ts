@@ -30,7 +30,7 @@ export const clubRole = pgEnum("club_role", ["admin", "treasurer"]);
 export const teamRole = pgEnum("team_role", ["coach", "player"]);
 export const membershipStatus = pgEnum("membership_status", ["active", "inactive", "waitlist"]);
 export const guardianRelation = pgEnum("guardian_relation", ["parent", "guardian"]);
-export const eventType = pgEnum("event_type", ["training", "match", "other"]);
+export const eventType = pgEnum("event_type", ["training", "match", "tournament", "social", "other"]);
 export const responseStatus = pgEnum("response_status", ["yes", "no", "maybe"]);
 
 export const users = pgTable("users", {
@@ -536,3 +536,12 @@ export const pushSubscriptions = pgTable(
   },
   (t) => [index("push_subscriptions_user_idx").on(t.userId)],
 );
+
+// Hemmeligt link til telefonens kalender. Den, der kender linket, kan se aktiviteterne, så det kan nulstilles.
+export const calendarFeeds = pgTable("calendar_feeds", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  createdAt: createdAt(),
+});

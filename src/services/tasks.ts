@@ -14,7 +14,7 @@ import { requireModule } from "./modules";
 
 export type TaskKind = "fruit" | "task";
 /** Frugt hører til træninger og kampe, ikke til fx forældremøder. */
-const FRUIT_EVENT_TYPES = ["training", "match"];
+const FRUIT_EVENT_TYPES = ["training", "match", "tournament"];
 export const TASK_KIND_LABEL: Record<TaskKind, string> = { fruit: "Frugt", task: "Opgave" };
 
 type Reader = Pick<Db, "select">;
@@ -343,7 +343,7 @@ export async function listFruitCandidates(db: Db, ctx: AccessContext, teamId: st
   const rows = await db
     .select({ id: events.id, title: events.title, type: events.type, startsAt: events.startsAt })
     .from(events)
-    .where(and(eq(events.teamId, teamId), gt(events.startsAt, ctx.now), isNull(events.cancelledAt), inArray(events.type, ["training", "match"])))
+    .where(and(eq(events.teamId, teamId), gt(events.startsAt, ctx.now), isNull(events.cancelledAt), inArray(events.type, ["training", "match", "tournament"])))
     .orderBy(asc(events.startsAt))
     .limit(limit + have.size);
   return rows.filter((r) => !have.has(r.id)).slice(0, limit);

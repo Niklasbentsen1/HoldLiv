@@ -23,6 +23,8 @@ export function EventFields({
         <select name="type" defaultValue={defaults?.type ?? "training"}>
           <option value="training">Træning</option>
           <option value="match">Kamp</option>
+          <option value="tournament">Stævne eller turnering</option>
+          <option value="social">Socialt arrangement</option>
           <option value="other">Anden aktivitet</option>
         </select>
       </label>

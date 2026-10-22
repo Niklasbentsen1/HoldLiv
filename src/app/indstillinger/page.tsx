@@ -1,10 +1,11 @@
-import { getNotificationPrefs, listMyNotifications } from "../../services";
+import { getFeedToken, getNotificationPrefs, listMyNotifications } from "../../services";
+import { origin } from "../../lib/origin";
 import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { CHANNELS, CHANNEL_LABEL, KINDS } from "../../lib/notify";
 import { Shell, ErrorBox } from "../../components/Shell";
 import { Empty, PageHead } from "../../components/ui";
-import { saveNotificationPrefs } from "../actions";
+import { resetCalendarLink, saveNotificationPrefs } from "../actions";
 import { vapidPublicKey } from "../../lib/push";
 import { PushToggle } from "./PushToggle";
 
@@ -16,7 +17,8 @@ const when = new Intl.DateTimeFormat("da-DK", { day: "numeric", month: "short", 
 export default async function Settings({ searchParams }: { searchParams: Promise<{ fejl?: string; gemt?: string }> }) {
   const { fejl, gemt } = await searchParams;
   const { ctx } = await requireSession("/indstillinger");
-  const [{ prefs, phone }, recent] = await Promise.all([getNotificationPrefs(db, ctx.userId), listMyNotifications(db, ctx)]);
+  const [{ prefs, phone }, recent, feedToken, base] = await Promise.all([getNotificationPrefs(db, ctx.userId), listMyNotifications(db, ctx), getFeedToken(db, ctx), origin()]);
+  const feedUrl = `${base}/api/kalender/${feedToken}.ics`;
 
   return (
     <Shell active="/indstillinger" ctx={ctx}>
@@ -46,6 +48,18 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         ))}
         <button className="btn primary" type="submit">Gem</button>
       </form>
+      <section className="card stack" style={{ marginBottom: 20 }}>
+        <h2 className="section-head">Kalender til telefonen</h2>
+        <p className="muted small">Abonnér på dine og dine børns aktiviteter i telefonens kalender. Den opdaterer sig selv, når tider ændres eller noget aflyses. Linket er hemmeligt: del det ikke.</p>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <a className="button" href={feedUrl.replace(/^https?:/, "webcal:")}>Åbn i kalenderen</a>
+          <input readOnly value={feedUrl} aria-label="Kalenderlink" style={{ flex: 1, minWidth: 240 }} />
+        </div>
+        <form action={resetCalendarLink}>
+          <button className="button danger" type="submit">Nulstil linket</button>
+          <span className="muted small"> Det gamle link holder op med at virke.</span>
+        </form>
+      </section>
       <section className="card stack">
         <h2 className="section-head">Seneste beskeder</h2>
         {recent.length ? (

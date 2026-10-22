@@ -71,7 +71,7 @@ export default async function Carpool({ params, searchParams }: { params: Promis
         {details.map(({ e, c }) => (
           <li key={e.id} id={`e${e.id}`} className="card">
             {/* Kampe og aktiviteter med samkørsel står åbne; almindelige træninger er foldet sammen. */}
-            <details open={e.type === "match" || c.offers.length > 0 || c.requests.length > 0} className="stack">
+            <details open={e.type === "match" || e.type === "tournament" || c.offers.length > 0 || c.requests.length > 0} className="stack">
             <summary style={{ listStyle: "none", cursor: "pointer" }}>
               <span className="row-card" style={{ padding: 0, boxShadow: "none" }}>
                 <DateTile date={e.startsAt} type={e.type} />

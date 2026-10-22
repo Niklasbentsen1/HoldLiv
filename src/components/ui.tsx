@@ -38,7 +38,7 @@ export function Icon({ name, size = 20, className }: { name: IconName; size?: nu
 }
 
 /** Ikon pr. aktivitetstype. */
-export const TYPE_ICON: Record<keyof typeof TYPE_LABEL, IconName> = { training: "whistle", match: "ball", other: "star" };
+export const TYPE_ICON: Record<keyof typeof TYPE_LABEL, IconName> = { training: "whistle", match: "ball", tournament: "ball", social: "users", other: "star" };
 
 // Stabil farve ud fra et navn, så samme person/hold altid har samme farve.
 const HUES = ["#6f93ff", "#ff7a45", "#b08cff", "#1f9d5b", "#e19a12", "#ef5d8f", "#2bb3c0", "#8a9a2b"];

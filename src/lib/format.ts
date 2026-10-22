@@ -1,6 +1,6 @@
 import { TIME_ZONE } from "./time";
 
-export const TYPE_LABEL = { training: "Træning", match: "Kamp", other: "Aktivitet" } as const;
+export const TYPE_LABEL = { training: "Træning", match: "Kamp", tournament: "Stævne", social: "Socialt", other: "Aktivitet" } as const;
 export const STATUS_LABEL = { yes: "Kommer", maybe: "Måske", no: "Kommer ikke" } as const;
 export const STATUSES = ["yes", "maybe", "no"] as const;
 
