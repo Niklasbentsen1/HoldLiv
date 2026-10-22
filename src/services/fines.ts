@@ -5,7 +5,8 @@
 //   - Satserne og beløbene bestemmer holdet selv (trænere og admin). HoldLiv har ingen standardsatser.
 //   - Aldersgrænsen (indstilling pr. hold, standard 12 år) tjekkes, når bøden gives. Spillere under grænsen, eller uden
 //     kendt fødselsdato, kan ikke få bøder. Ændres grænsen senere, røres gamle bøder ikke.
-//   - Kun trænere og admin giver bøder, markerer dem betalt og trækker dem tilbage.
+//   - Kun trænere og admin giver bøder, markerer dem betalt og trækker dem tilbage. En betalt bøde, der trækkes tilbage,
+//     regnes som tilbagebetalt og vises som det.
 //   - Betalingen sker uden for HoldLiv (kontant eller MobilePay til holdkassen); her sættes bøden kun som betalt.
 //   - Spilleren og forældrene ser egne bøder. Resten af holdet ser kun, hvor meget der er i kassen, ikke hvem der har fået hvad.
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
@@ -126,12 +127,19 @@ export async function setFinePaid(db: Db, ctx: AccessContext, fineId: string, pa
   await db.update(fines).set({ paidAt: paid ? new Date() : null }).where(eq(fines.id, fineId));
 }
 
-/** Træk en bøde tilbage. Den bliver stående som historik for trænerne, men tæller ikke i kassen. */
+/**
+ * Træk en bøde tilbage. Den bliver stående som historik for trænerne, men tæller ikke i kassen.
+ * Er den betalt, regnes den som tilbagebetalt, så beløbet kan ses i oversigten og ikke bare forsvinder.
+ */
 export async function cancelFine(db: Db, ctx: AccessContext, fineId: string) {
   const fine = await loadFine(db, fineId);
   const { team } = await requireModule(db, ctx, fine.teamId, "fines");
   if (!leads(ctx, team)) throw new Error("Kun trænere og administratorer trækker bøder tilbage.");
-  await db.update(fines).set({ cancelledAt: new Date() }).where(and(eq(fines.id, fineId), isNull(fines.cancelledAt)));
+  const now = new Date();
+  await db
+    .update(fines)
+    .set({ cancelledAt: now, ...(fine.paidAt ? { refundedAt: now } : {}) })
+    .where(and(eq(fines.id, fineId), isNull(fines.cancelledAt)));
 }
 
 /** Bødekassen: satser, kassen, egne bøder, og for trænere overblik pr. spiller og seneste bøder. */
@@ -164,7 +172,7 @@ export async function getFineBox(db: Db, ctx: AccessContext, teamId: string) {
   ]);
 
   const live = rows.filter((r) => !r.fine.cancelledAt);
-  const sum = (list: typeof live) => list.reduce((a, r) => a + r.fine.amountOre, 0);
+  const sum = (list: typeof rows) => list.reduce((a, r) => a + r.fine.amountOre, 0);
   const view = (r: (typeof rows)[number]) => ({
     id: r.fine.id,
     playerName: `${r.firstName} ${r.lastName}`,
@@ -172,6 +180,7 @@ export async function getFineBox(db: Db, ctx: AccessContext, teamId: string) {
     amountOre: r.fine.amountOre,
     paid: !!r.fine.paidAt,
     cancelled: !!r.fine.cancelledAt,
+    refunded: !!r.fine.refundedAt,
     createdAt: r.fine.createdAt,
     eventTitle: r.eventTitle,
   });
@@ -185,6 +194,8 @@ export async function getFineBox(db: Db, ctx: AccessContext, teamId: string) {
       count: live.length,
       paidOre: sum(live.filter((r) => r.fine.paidAt)),
       openOre: sum(live.filter((r) => !r.fine.paidAt)),
+      /** Betalte bøder, der siden er trukket tilbage og givet tilbage. */
+      refundedOre: sum(rows.filter((r) => r.fine.refundedAt)),
     },
     /** Egne og børnenes bøder. */
     mine: live.filter((r) => canActAs(ctx, r.fine.profileId)).map(view),

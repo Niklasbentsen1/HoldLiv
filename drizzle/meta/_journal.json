@@ -50,6 +50,13 @@
       "when": 1792673137141,
       "tag": "0006_bodekasse",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792673548575,
+      "tag": "0007_bode_tilbagebetalt",
+      "breakpoints": true
     }
   ]
 }

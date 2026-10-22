@@ -1,0 +1,1 @@
+ALTER TABLE "fines" ADD COLUMN "refunded_at" timestamp with time zone;

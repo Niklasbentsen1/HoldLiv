@@ -462,6 +462,8 @@ export const fines = pgTable(
     eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
     givenByUserId: uuid("given_by_user_id").references(() => users.id, { onDelete: "set null" }),
     paidAt: timestamp("paid_at", { withTimezone: true }),
+    // Sat, når en betalt bøde trækkes tilbage: pengene er givet tilbage og tæller ikke længere som betalt.
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
     // Trukne bøder tæller ikke med, men bliver stående som historik.
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     createdAt: createdAt(),
