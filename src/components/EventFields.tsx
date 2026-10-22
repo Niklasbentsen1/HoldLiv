@@ -12,6 +12,7 @@ export function EventFields({
     location: string | null;
     description: string | null;
     responseDeadline: Date | null;
+    maxParticipants: number | null;
   };
 }) {
   const minutes = defaults?.endsAt ? Math.round((defaults.endsAt.getTime() - defaults.startsAt.getTime()) / 60_000) : 90;
@@ -60,6 +61,10 @@ export function EventFields({
           name="responseDeadline"
           defaultValue={defaults?.responseDeadline ? toLocalInput(defaults.responseDeadline) : ""}
         />
+      </label>
+      <label>
+        Antal pladser <span className="muted">(valgfri, ellers ubegrænset; flere end det kommer på venteliste)</span>
+        <input type="number" name="maxParticipants" min={1} max={500} defaultValue={defaults?.maxParticipants ?? ""} placeholder="Fx 12" />
       </label>
     </>
   );

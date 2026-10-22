@@ -15,7 +15,7 @@ import {
   createTeam,
   joinTeamByInvite,
   removeTeamMember,
-  respondToEvent,
+  respondToEventNotifying,
   rotateInviteCode,
   setEventCancelledNotifying,
   removePushSubscription,
@@ -161,10 +161,11 @@ export async function switchProfile(formData: FormData) {
 export async function respond(formData: FormData) {
   const { ctx } = await requireSession();
   const back = safeNext(str(formData, "back"));
-  await attempt(back, () =>
-    respondToEvent(
+  await attempt(back, async () =>
+    respondToEventNotifying(
       db,
       ctx,
+      await deliverFromEnv(),
       str(formData, "eventId"),
       str(formData, "profileId"),
       str(formData, "status") as "yes" | "no" | "maybe",
@@ -368,6 +369,7 @@ function eventInput(formData: FormData): EventInput {
     location: opt(formData, "location"),
     description: opt(formData, "description"),
     responseDeadline: deadline ? parseLocalDateTime(deadline) : null,
+    maxParticipants: opt(formData, "maxParticipants") ? Number(opt(formData, "maxParticipants")) : null,
   };
 }
 

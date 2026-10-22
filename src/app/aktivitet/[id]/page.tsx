@@ -20,6 +20,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const cancelled = !!e.cancelledAt;
   const groups = [
     { key: "yes", label: "Kommer", list: e.groups.yes },
+    { key: "wait", label: "Venteliste", list: e.groups.waitlist },
     { key: "maybe", label: "Måske", list: e.groups.maybe },
     { key: "no", label: "Kommer ikke", list: e.groups.no },
     { key: "none", label: "Ikke svaret", list: e.groups.none },
@@ -64,6 +65,20 @@ export default async function EventPage({ params, searchParams }: { params: Prom
                   </span>
                 </div>
               )}
+              {e.maxParticipants != null && (
+                <div className="fact">
+                  <span className="icon-bubble">
+                    <Icon name="users" size={18} />
+                  </span>
+                  <span>
+                    <small>Pladser</small>
+                    <strong>
+                      {e.spotsLeft === 0 ? `Fyldt (${e.maxParticipants})` : `${e.spotsLeft} ledige af ${e.maxParticipants}`}
+                      {e.groups.waitlist.length > 0 ? `, ${e.groups.waitlist.length} på venteliste` : ""}
+                    </strong>
+                  </span>
+                </div>
+              )}
               {e.responseDeadline && !cancelled && (
                 <div className="fact">
                   <span className="icon-bubble">
@@ -83,7 +98,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
               mine.map((p) => (
                 <div key={p.profileId} className="stack" style={{ gap: 0 }}>
                   <span className="hero-eyebrow">{mine.length > 1 || !p.mine ? p.firstName : `Dit svar for ${p.firstName}`}</span>
-                  <RespondForm eventId={id} profileId={p.profileId} status={p.status} comment={p.comment} back={back} disabled={!p.canRespond} />
+                  <RespondForm eventId={id} profileId={p.profileId} status={p.status} comment={p.comment} back={back} disabled={!p.canRespond} waitlistPosition={p.waitlistPosition} />
                 </div>
               ))}
           </section>
@@ -96,7 +111,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
               g.list.length === 0 ? null : (
                 <div key={g.key}>
                   <h3 className="group-title">
-                    <i className={g.key} />
+                    <i className={g.key === "wait" ? "maybe" : g.key} />
                     {g.label} <span className="muted">· {g.list.length}</span>
                   </h3>
                   <ul className="people">
@@ -104,7 +119,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
                       <li key={p.profileId}>
                         <Avatar name={p.name} />
                         <span className="grow">
-                          <span className="name">{p.name}</span>
+                          <span className="name">{g.key === "wait" ? `${p.waitlistPosition}. ${p.name}` : p.name}</span>
                           {(p.comment || p.respondedBy) && (
                             <span className="note">
                               {p.comment ? `"${p.comment}"` : ""}

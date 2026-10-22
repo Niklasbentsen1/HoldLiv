@@ -1,6 +1,7 @@
 // Handlinger i HoldLiv. Hver funktion tjekker rettigheder via can()/assertCan()
 // før den rører databasen, så web, app og AI-værktøjer deler samme regler.
-import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { checkMaxParticipants } from "./calendar";
 import type { Db } from "../db/client";
 import {
   clubMemberships,
@@ -157,11 +158,14 @@ export interface EventInput {
   location?: string | null;
   description?: string | null;
   responseDeadline?: Date | null;
+  /** Antal pladser; tomt betyder ubegrænset. */
+  maxParticipants?: number | null;
 }
 
 export async function createEvent(db: Db, ctx: AccessContext, teamId: string, input: EventInput) {
   const team = await loadTeamFacts(db, teamId);
   assertCan(ctx, { action: "event.manage", event: team });
+  checkMaxParticipants(input.maxParticipants);
   const [event] = await db
     .insert(events)
     .values({ ...input, teamId, clubId: team.clubId, createdByUserId: ctx.userId })
@@ -181,14 +185,20 @@ export async function respondToEvent(
 ) {
   const [event, profile] = await Promise.all([loadEventFacts(db, eventId), loadProfileFacts(db, profileId)]);
   assertCan(ctx, { action: "event.respond", event, profile });
-  const values = { eventId, profileId, status, comment: comment ?? null, respondedByUserId: ctx.userId, respondedAt: new Date() };
+  const now = new Date();
+  const values = { eventId, profileId, status, comment: comment ?? null, respondedByUserId: ctx.userId, respondedAt: now, yesSince: status === "yes" ? now : null };
   const { comment: _, ...withoutComment } = values;
+  // Den, der allerede sagde "kommer", beholder sin plads i køen til pladserne.
+  const yesSince =
+    status === "yes"
+      ? sql`case when ${eventResponses.status} = 'yes' then ${eventResponses.yesSince} else excluded.yes_since end`
+      : sql`null`;
   await db
     .insert(eventResponses)
     .values(values)
     .onConflictDoUpdate({
       target: [eventResponses.eventId, eventResponses.profileId],
-      set: comment === undefined ? withoutComment : values,
+      set: { ...(comment === undefined ? withoutComment : values), yesSince },
     });
 }
 

@@ -16,7 +16,8 @@ import { normalizePhone, type SmsSender } from "../lib/sms";
 import type { Mailer } from "../lib/mail";
 import { PushGoneError, type PushSender } from "../lib/push";
 import { TYPE_LABEL, shortDay, time, when } from "../lib/format";
-import { setEventCancelled, updateEvent } from "./calendar";
+import { confirmedProfileIds, setEventCancelled, updateEvent } from "./calendar";
+import { respondToEvent } from "./index";
 import type { EventInput } from "./index";
 
 export interface Deliver {
@@ -232,7 +233,9 @@ async function announceChange(db: Db, deliver: Deliver, ctx: AccessContext, befo
 /** Ret en aktivitet og giv holdets familier besked, hvis tid, sted eller navn ændres. */
 export async function updateEventNotifying(db: Db, ctx: AccessContext, deliver: Deliver, eventId: string, patch: Partial<EventInput>) {
   const [before] = await db.select().from(events).where(eq(events.id, eventId));
+  const seatsBefore = await confirmedProfileIds(db, eventId);
   const after = await updateEvent(db, ctx, eventId, patch);
+  await notifyPromoted(db, deliver, ctx, eventId, seatsBefore);
   if (before && after) {
     try {
       await announceChange(db, deliver, ctx, before, after);
@@ -393,4 +396,51 @@ export async function removePushSubscription(db: Db, ctx: AccessContext, endpoin
 
 export async function countMyPushSubscriptions(db: Db, ctx: AccessContext) {
   return (await db.select({ id: pushSubscriptions.id }).from(pushSubscriptions).where(eq(pushSubscriptions.userId, ctx.userId))).length;
+}
+
+// --- Venteliste ---
+
+/** Fortæl dem, der er rykket op fra ventelisten siden `before`. */
+async function notifyPromoted(db: Db, deliver: Deliver, ctx: AccessContext, eventId: string, before: Set<string>, exceptProfileId?: string) {
+  try {
+    const after = await confirmedProfileIds(db, eventId);
+    const promoted = [...after].filter((id) => !before.has(id) && id !== exceptProfileId);
+    if (promoted.length === 0) return;
+    const [e] = await db.select().from(events).where(eq(events.id, eventId));
+    if (!e || e.cancelledAt || e.startsAt.getTime() <= ctx.now.getTime()) return;
+    const [team] = await db.select({ name: teams.name }).from(teams).where(eq(teams.id, e.teamId));
+    const names = await db.select({ id: profiles.id, firstName: profiles.firstName, userId: profiles.userId }).from(profiles).where(inArray(profiles.id, promoted));
+    for (const p of names) {
+      const recipients = await recipientsOfPlayers(db, [p.id], ctx.now);
+      for (const r of recipients) {
+        const who = p.userId === r.userId ? "Du" : p.firstName;
+        await notifyUsers(db, deliver, [r], {
+          kind: "waitlist",
+          subject: `Der er en plads: ${label(e)}, ${team.name}`,
+          body: `${team.name}: ${who} har fået en plads på ${label(e)} ${when(e.startsAt)}, fordi en plads blev ledig.\n\nSe aktiviteten: ${deliver.baseUrl}/aktivitet/${e.id}`,
+          sms: `HoldLiv ${team.name}: ${who} har fået en plads på ${label(e)} ${shortDay(e.startsAt)}`,
+          eventId: e.id,
+          url: `/aktivitet/${e.id}`,
+          dedupeKey: `promoted:${e.id}:${p.id}:${r.userId}`,
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[notify] kunne ikke sende besked om ledig plads", err);
+  }
+}
+
+/** Som respondToEvent, men giver besked til dem, der rykker op fra ventelisten, når en plads bliver ledig. */
+export async function respondToEventNotifying(
+  db: Db,
+  ctx: AccessContext,
+  deliver: Deliver,
+  eventId: string,
+  profileId: string,
+  status: "yes" | "no" | "maybe",
+  comment?: string | null,
+) {
+  const before = await confirmedProfileIds(db, eventId);
+  await respondToEvent(db, ctx, eventId, profileId, status, comment);
+  await notifyPromoted(db, deliver, ctx, eventId, before, profileId);
 }
