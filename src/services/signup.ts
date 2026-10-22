@@ -1,5 +1,6 @@
 // Online indmeldelse: et åbent link pr. forening, hvor nye medlemmer sender en ansøgning. Admin godkender hver enkelt.
 // Først ved godkendelse oprettes personen (og forælderen) og kommer på hold eller venteliste.
+import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, gt, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { clubMemberships, clubRoles, clubs, guardianships, profiles, signupRequests, teamMembers, teams, users } from "../db/schema";
@@ -16,6 +17,9 @@ export const MAX_TERMS_LENGTH = 5000;
 /** Samme e-mail må højst sende så mange ansøgninger i døgnet, og en forening højst så mange ubehandlede. */
 export const MAX_SIGNUPS_PER_EMAIL_PER_DAY = 3;
 export const MAX_PENDING_PER_CLUB = 500;
+/** Åben side uden login: grænser pr. afsender-IP og pr. forening i timen mod spam. */
+export const MAX_SIGNUPS_PER_IP_PER_HOUR = 5;
+export const MAX_SIGNUPS_PER_CLUB_PER_HOUR = 30;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface SignupInfo {
@@ -73,7 +77,7 @@ async function adminEmails(db: Db, clubId: string) {
 }
 
 /** Modtager en ansøgning fra den åbne side. Kræver ingen login. Mails til ansøger og admin er best effort. */
-export async function submitSignup(db: Db, slug: string, input: SignupInput, mail: Mailer, baseUrl: string, now = new Date()) {
+export async function submitSignup(db: Db, slug: string, input: SignupInput, mail: Mailer, baseUrl: string, now = new Date(), ip: string | null = null) {
   const info = await getSignupInfo(db, slug);
   if (!info) throw new Error("Foreningen har ikke åbnet for indmeldelse her.");
   const firstName = input.firstName.trim();
@@ -106,6 +110,14 @@ export async function submitSignup(db: Db, slug: string, input: SignupInput, mai
     .from(signupRequests)
     .where(and(eq(signupRequests.contactEmail, email), gt(signupRequests.createdAt, new Date(now.getTime() - 86_400_000))));
   if (recent >= MAX_SIGNUPS_PER_EMAIL_PER_DAY) throw new Error("Der er sendt flere ansøgninger fra den e-mail i dag. Prøv igen i morgen.");
+  const hourAgo = new Date(now.getTime() - 3_600_000);
+  const ipHash = ip ? createHash("sha256").update(ip).digest("hex") : null;
+  if (ipHash) {
+    const [{ fromIp }] = await db.select({ fromIp: count() }).from(signupRequests).where(and(eq(signupRequests.ipHash, ipHash), gt(signupRequests.createdAt, hourAgo)));
+    if (fromIp >= MAX_SIGNUPS_PER_IP_PER_HOUR) throw new Error("Der er sendt mange ansøgninger herfra. Prøv igen om lidt.");
+  }
+  const [{ lastHour }] = await db.select({ lastHour: count() }).from(signupRequests).where(and(eq(signupRequests.clubId, info.clubId), gt(signupRequests.createdAt, hourAgo)));
+  if (lastHour >= MAX_SIGNUPS_PER_CLUB_PER_HOUR) throw new Error("Foreningen har fået mange ansøgninger det sidste stykke tid. Prøv igen om lidt.");
   const [{ pending }] = await db.select({ pending: count() }).from(signupRequests).where(and(eq(signupRequests.clubId, info.clubId), eq(signupRequests.status, "pending")));
   if (pending >= MAX_PENDING_PER_CLUB) throw new Error("Foreningen har mange ubehandlede ansøgninger lige nu. Prøv igen senere.");
   const [dup] = await db
@@ -130,12 +142,16 @@ export async function submitSignup(db: Db, slug: string, input: SignupInput, mai
       termsText: info.terms,
       termsAcceptedAt: now,
       createdAt: now,
+      ipHash,
     })
     .returning({ id: signupRequests.id });
   try {
-    await mail(email, `Vi har modtaget din ansøgning til ${info.clubName}`, `Hej\n\nTak for ansøgningen om medlemskab af ${info.clubName} for ${firstName} ${lastName}. Foreningen læser den og skriver til dig, når den er behandlet.\n\nHar du ikke bedt om det, kan du se bort fra mailen.`);
-    for (const to of await adminEmails(db, info.clubId)) {
-      await mail(to, `Ny ansøgning til ${info.clubName}`, `${firstName} ${lastName} (${age} år) har bedt om at blive medlem.\n\nSe og godkend ansøgningen her: ${baseUrl}/forening/tilmeldinger?klub=${info.clubId}`);
+    // Ansøgerens fritekstnavn gentages ikke i mails. Admin får højst én mail i timen, så siden ikke kan oversvømme indbakken.
+    await mail(email, `Vi har modtaget din ansøgning til ${info.clubName}`, `Hej\n\nTak for ansøgningen om medlemskab af ${info.clubName}. Foreningen læser den og skriver til dig, når den er behandlet.\n\nHar du ikke bedt om det, kan du se bort fra mailen.`);
+    if (lastHour === 0) {
+      for (const to of await adminEmails(db, info.clubId)) {
+        await mail(to, `Nye ansøgninger til ${info.clubName}`, `Der er kommet en ny ansøgning om medlemskab.\n\nSe og godkend ansøgninger her: ${baseUrl}/forening/tilmeldinger?klub=${info.clubId}`);
+      }
     }
   } catch (e) {
     console.error("Mail om ansøgning fejlede", e);
@@ -213,20 +229,26 @@ export async function decideSignup(
     let profileId: string;
     if (!minor) {
       // Har personen allerede en profil med samme navn og e-mail (fx fra et andet hold), bruges den.
+      // Kun en profil, der allerede er medlem af denne forening, genbruges. Ellers oprettes en ny, og først når ejeren af e-mailen selv
+      // logger ind, flettes den med den eksisterende profil (claimProfile). Så ser en forening aldrig en anden forenings oplysninger.
       const [same] = await tx
         .select({ id: profiles.id })
         .from(profiles)
+        .innerJoin(clubMemberships, and(eq(clubMemberships.profileId, profiles.id), eq(clubMemberships.clubId, req.clubId)))
         .where(and(sql`lower(${profiles.email}) = ${req.contactEmail}`, sql`lower(${profiles.firstName}) = ${req.firstName.toLowerCase()}`, sql`lower(${profiles.lastName}) = ${req.lastName.toLowerCase()}`, sql`${profiles.deletedAt} is null`));
       profileId = same
         ? same.id
         : (await tx.insert(profiles).values({ firstName: req.firstName, lastName: req.lastName, birthDate: req.birthDate, email: req.contactEmail, phone: req.phone, createdByUserId: ctx.userId }).returning({ id: profiles.id }))[0].id;
     } else {
       profileId = (await tx.insert(profiles).values({ firstName: req.firstName, lastName: req.lastName, birthDate: req.birthDate, phone: null, createdByUserId: ctx.userId }).returning({ id: profiles.id }))[0].id;
-      // Forælderen genbruges kun, hvis navn og e-mail passer til en eksisterende profil; ellers oprettes en, som overtages ved første login.
+      // Forælderen genbruges kun, hvis vedkommende allerede er forælder til et medlem i denne forening; ellers oprettes en, som overtages eller flettes ved login.
       const [g] = await tx
         .select({ id: profiles.id })
         .from(profiles)
-        .where(and(sql`lower(${profiles.email}) = ${req.contactEmail}`, sql`lower(${profiles.firstName}) = ${(req.guardianFirstName ?? "").toLowerCase()}`, sql`lower(${profiles.lastName}) = ${(req.guardianLastName ?? "").toLowerCase()}`, sql`${profiles.deletedAt} is null`));
+        .innerJoin(guardianships, eq(guardianships.guardianProfileId, profiles.id))
+        .innerJoin(clubMemberships, and(eq(clubMemberships.profileId, guardianships.childProfileId), eq(clubMemberships.clubId, req.clubId)))
+        .where(and(sql`lower(${profiles.email}) = ${req.contactEmail}`, sql`lower(${profiles.firstName}) = ${(req.guardianFirstName ?? "").toLowerCase()}`, sql`lower(${profiles.lastName}) = ${(req.guardianLastName ?? "").toLowerCase()}`, sql`${profiles.deletedAt} is null`))
+        .limit(1);
       const guardianId = g
         ? g.id
         : (await tx.insert(profiles).values({ firstName: req.guardianFirstName ?? "Forælder", lastName: req.guardianLastName ?? "", email: req.contactEmail, phone: req.phone, createdByUserId: ctx.userId }).returning({ id: profiles.id }))[0].id;

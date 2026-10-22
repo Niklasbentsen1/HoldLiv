@@ -789,6 +789,8 @@ export const signupRequests = pgTable(
     // De betingelser, der stod på siden, da der blev sagt ja.
     termsText: text("terms_text"),
     termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }).notNull(),
+    // Hash af afsenderens IP-adresse, kun til at begrænse spam.
+    ipHash: text("ip_hash"),
     status: signupStatus("status").notNull().default("pending"),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     decidedByUserId: uuid("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),

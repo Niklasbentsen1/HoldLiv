@@ -1,5 +1,5 @@
 {
-  "id": "10534d13-c35e-426b-b633-be7db47b672d",
+  "id": "e792b90e-721a-4c30-9361-31d064a72978",
   "prevId": "497b5b2b-c102-47d1-ac5e-701ad5abdbc5",
   "version": "7",
   "dialect": "postgresql",
@@ -3551,6 +3551,12 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "ip_hash": {
+          "name": "ip_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "status": {
           "name": "status",

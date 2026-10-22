@@ -296,6 +296,8 @@ export async function submitSignupAction(slug: string, _: SignupState, formData:
       },
       sendMail,
       await origin(),
+      new Date(),
+      ((await headers()).get("x-forwarded-for") ?? "").split(",")[0].trim() || null,
     );
     return { done: true };
   } catch (e) {

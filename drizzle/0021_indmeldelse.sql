@@ -13,6 +13,7 @@ CREATE TABLE "signup_requests" (
 	"message" text,
 	"terms_text" text,
 	"terms_accepted_at" timestamp with time zone NOT NULL,
+	"ip_hash" text,
 	"status" "signup_status" DEFAULT 'pending' NOT NULL,
 	"decided_at" timestamp with time zone,
 	"decided_by_user_id" uuid,
