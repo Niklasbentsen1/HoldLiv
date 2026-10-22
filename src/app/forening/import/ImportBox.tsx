@@ -86,7 +86,7 @@ export function ImportBox({ clubId }: { clubId: string }) {
           </label>
           <label>
             …eller indsæt medlemmerne her
-            <textarea name="text" rows={6} placeholder={"Fornavn;Efternavn;Fødselsdato;E-mail;Hold\\nAnna;Hansen;12-03-2015;mor@eksempel.dk;U9"} />
+            <textarea name="text" rows={6} placeholder={"Fornavn;Efternavn;Fødselsdato;E-mail;Hold\nAnna;Hansen;12-03-2015;mor@eksempel.dk;U9"} />
           </label>
           <button name="intent" value="preview" disabled={pending}>{pending ? "Læser…" : "Se, hvad der vil ske"}</button>
         </div>

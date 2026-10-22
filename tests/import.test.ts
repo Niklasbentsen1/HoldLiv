@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { testDb } from "./db";
 import { loadAccessContext } from "../src/auth/context";
 import { registerUser, createClub, runImport, detectMapping, parseDate, membersCsv, grantTreasurerByEmail } from "../src/services";
-import { parseCsv } from "../src/lib/csv";
+import { decodeCsvBytes, parseCsv } from "../src/lib/csv";
 import { guardianships, memberFields, teamMembers, teams } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -46,6 +46,18 @@ describe("csv og kolonnegæt", () => {
     expect(parseDate("31-02-2015")).toBeNull();
     expect(parseDate("2999-01-01")).toBeNull();
     expect(parseDate("i går")).toBeNull();
+  });
+});
+
+describe("tegnsæt", () => {
+  it("læser både UTF-8 og dansk Excels Windows-1252", () => {
+    const text = "Fødselsdato;Forælder\nÆbelø;Østergård";
+    expect(decodeCsvBytes(new TextEncoder().encode(text))).toBe(text);
+    const cp1252 = Uint8Array.from(text, (c) => ({ æ: 0xe6, ø: 0xf8, å: 0xe5, Æ: 0xc6, Ø: 0xd8, Å: 0xc5 })[c as "æ"] ?? c.charCodeAt(0));
+    expect(() => new TextDecoder("utf-8", { fatal: true }).decode(cp1252)).toThrow();
+    const decoded = decodeCsvBytes(cp1252);
+    expect(decoded).toBe(text);
+    expect(detectMapping(parseCsv(decoded)[0]).map((c) => c.target)).toEqual(["birthDate", "guardianName"]);
   });
 });
 
@@ -95,6 +107,18 @@ describe("import", () => {
     expect(r.commit?.created).toBe(1);
     const manual = await runImport(db, admin, clubId, "A;B\nGitte Gram;55", [{ target: "fullName" }, { target: "phone" }], false);
     expect(manual.rows[0].person).toMatchObject({ firstName: "Gitte", lastName: "Gram", phone: "55" });
+  });
+
+  it("slår ikke to forskellige forældre med samme navn sammen, og overskriver aldrig egne felter", async () => {
+    const file = "Fornavn;Efternavn;Fødselsdato;Forælder;Forælder telefon;Skostørrelse\nOle;Olsen;01-01-2016;Anne Jensen;;30\nPer;Pedersen;02-02-2016;Anne Jensen;;31\nUlla;Ulsen;03-03-2016;Bente Bo;11111111;32\nUdo;Ulsen;04-04-2016;Bente Bo;11 11 11 11;33";
+    await runImport(db, admin, clubId, file, null, true);
+    const anne = await sql`select distinct g.guardian_profile_id from guardianships g join profiles c on c.id = g.child_profile_id where c.first_name in ('Ole','Per')`;
+    expect(anne).toHaveLength(2);
+    const bente = await sql`select distinct g.guardian_profile_id from guardianships g join profiles c on c.id = g.child_profile_id where c.first_name in ('Ulla','Udo')`;
+    expect(bente).toHaveLength(1);
+    await runImport(db, admin, clubId, file.replace(";30\n", ";99\n"), null, true);
+    const shoe = await sql`select v.value from member_field_values v join profiles p on p.id = v.profile_id where p.first_name = 'Ole'`;
+    expect(shoe[0].value).toBe("30");
   });
 
   it("kræver admin og kan eksporteres med egne felter", async () => {

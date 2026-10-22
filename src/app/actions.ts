@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { canActAs, ForbiddenError } from "../auth/permissions";
+import { decodeCsvBytes } from "../lib/csv";
 import { LoginError, requestLogin, sha256, verifyCode } from "../auth/login";
 import { beginTotpSetup, completeMfa, confirmTotpSetup, disableTotp, MfaError, regenerateRecoveryCodes } from "../auth/mfa";
 import {
@@ -225,7 +226,7 @@ export async function importAction(_: ImportState, formData: FormData): Promise<
   const { ctx } = await requireSession();
   const clubId = str(formData, "clubId");
   const file = formData.get("file");
-  const text = typeof file === "object" && file && "text" in file && file.size > 0 ? (file.size > MAX_IMPORT_BYTES ? null : await file.text()) : String(formData.get("text") ?? "");
+  const text = typeof file === "object" && file && "arrayBuffer" in file && file.size > 0 ? (file.size > MAX_IMPORT_BYTES ? null : decodeCsvBytes(new Uint8Array(await file.arrayBuffer()))) : String(formData.get("text") ?? "");
   if (text === null) return { error: "Filen er for stor. Del den op i flere filer." };
   if (!text.trim()) return { error: "Vælg en fil, eller indsæt medlemmerne i feltet." };
   let mapping: ColumnMap[] | null = null;
@@ -246,7 +247,13 @@ export async function importAction(_: ImportState, formData: FormData): Promise<
       mapping: report.mapping,
       counts: report.counts,
       newTeams: report.newTeams,
-      sample: report.rows.filter((r) => r.status !== "new" || r.warnings.length).slice(0, 40).map((r) => ({ line: r.line, name: `${r.person.firstName} ${r.person.lastName}`.trim() || "(uden navn)", status: STATUS_LABEL[r.status], notes: [...r.errors, ...r.warnings] })),
+      // Rækker med fejl og advarsler først, så de første "nye" rækker, så tegnfejl (æøå) kan ses.
+      sample: [...report.rows.filter((r) => r.status !== "new" || r.warnings.length), ...report.rows.filter((r) => r.status === "new" && !r.warnings.length).slice(0, 5)].slice(0, 40).map((r) => ({
+        line: r.line,
+        name: `${r.person.firstName} ${r.person.lastName}`.trim() || "(uden navn)",
+        status: STATUS_LABEL[r.status],
+        notes: [...r.errors, ...r.warnings, ...(r.status === "new" && !r.errors.length ? [[r.birthDate, r.person.email, r.teams.join(", ")].filter(Boolean).join(" · ")].filter(Boolean) : [])],
+      })),
       done: report.commit,
     };
   } catch (e) {

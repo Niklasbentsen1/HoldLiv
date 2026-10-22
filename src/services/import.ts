@@ -216,8 +216,12 @@ export async function runImport(db: Db, ctx: AccessContext, clubId: string, text
       .from(guardianships)
       .innerJoin(clubMemberships, and(eq(clubMemberships.profileId, guardianships.childProfileId), eq(clubMemberships.clubId, clubId)))
       .innerJoin(profiles, eq(profiles.id, guardianships.guardianProfileId));
-    const gKey = (g: Person) => (g.email ? `e:${g.email}|${g.firstName.toLowerCase()}` : `n:${g.firstName} ${g.lastName}`.toLowerCase());
-    for (const g of clubGuardians) guardianCache.set(gKey({ firstName: g.firstName, lastName: g.lastName, email: g.email, phone: null }), g.id);
+    // To forskellige forældre med samme navn må ikke slås sammen: uden e-mail eller telefon oprettes en forælder pr. barn.
+    const gKey = (g: Person) => (g.email ? `e:${g.email}|${g.firstName.toLowerCase()}` : g.phone ? `p:${g.phone.replace(/\s/g, "")}|${g.firstName} ${g.lastName}`.toLowerCase() : null);
+    for (const g of clubGuardians) {
+      const k = gKey({ firstName: g.firstName, lastName: g.lastName, email: g.email, phone: null });
+      if (k) guardianCache.set(k, g.id);
+    }
 
     for (const r of rows) {
       if (r.status === "duplicate") continue;
@@ -234,11 +238,11 @@ export async function runImport(db: Db, ctx: AccessContext, clubId: string, text
       }
       if (r.guardian) {
         const gk = gKey(r.guardian);
-        let gid = guardianCache.get(gk);
+        let gid = gk ? guardianCache.get(gk) : undefined;
         if (!gid) {
           const [g] = await tx.insert(profiles).values({ ...r.guardian, createdByUserId: ctx.userId }).returning({ id: profiles.id });
           gid = g.id;
-          guardianCache.set(gk, gid);
+          if (gk) guardianCache.set(gk, gid);
         }
         await tx.insert(guardianships).values({ guardianProfileId: gid, childProfileId: profileId }).onConflictDoNothing();
       }
@@ -254,7 +258,7 @@ export async function runImport(db: Db, ctx: AccessContext, clubId: string, text
           fieldId = f.id;
           fieldIds.set(name.toLowerCase(), fieldId);
         }
-        await tx.insert(memberFieldValues).values({ fieldId, profileId, value }).onConflictDoUpdate({ target: [memberFieldValues.fieldId, memberFieldValues.profileId], set: { value } });
+        await tx.insert(memberFieldValues).values({ fieldId, profileId, value }).onConflictDoNothing();
       }
     }
     return { created, updated, teamsCreated };

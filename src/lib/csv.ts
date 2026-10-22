@@ -39,3 +39,12 @@ export function parseCsv(input: string): string[][] {
   }
   return rows.filter((r) => r.some((c) => c.trim() !== "")).map((r) => r.map((c) => c.trim()));
 }
+
+/** Dansk Excel gemmer "CSV (semikolonsepareret)" som Windows-1252. Er filen ikke gyldig UTF-8, læses den som Windows-1252. */
+export function decodeCsvBytes(buf: Uint8Array): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+  } catch {
+    return new TextDecoder("windows-1252").decode(buf);
+  }
+}
