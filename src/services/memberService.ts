@@ -43,7 +43,7 @@ export async function aiServiceStatus(db: Db, ctx: AccessContext, assistant: Ass
 }
 
 const escape = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const edge = (core: string) => new RegExp(`(?<![\\p{L}\\p{N}_-])(?:${core})(?![\\p{L}\\p{N}_-])`, "gu");
+const edge = (core: string) => new RegExp(`(?<![\\p{L}\\p{N}_-])(?:${core})(s?)(?![\\p{L}\\p{N}_-])`, "giu");
 
 /** Navne på personer og hold erstattes med aliasser, før noget sendes, og sættes ind igen i svaret. Hele ord, længste navn først. */
 export function makeAliases(people: { names: string[] }[], teamNames: string[]) {
@@ -52,13 +52,15 @@ export function makeAliases(people: { names: string[] }[], teamNames: string[]) 
   teamNames.forEach((n, i) => n && entries.push({ text: n, alias: `Hold ${i + 1}` }));
   const longest = [...entries].sort((a, b) => b.text.length - a.text.length);
   const nameRe = longest.length ? edge(longest.map((e) => escape(e.text)).join("|")) : null;
-  const aliasOf = new Map(longest.map((e) => [e.text, e.alias]));
+  // Små/store bogstaver er ligegyldige; deler to personer et navn (fx efternavn), vinder den første.
+  const aliasOf = new Map<string, string>();
+  for (const e of entries) if (!aliasOf.has(e.text.toLowerCase())) aliasOf.set(e.text.toLowerCase(), e.alias);
   // Tilbage: det første navn, der hørte til aliasset (fornavn for en person, hele navnet for et hold).
   const firstFor = new Map<string, string>();
   for (const e of entries) if (!firstFor.has(e.alias)) firstFor.set(e.alias, e.text);
   return {
-    out: (text: string) => (nameRe ? text.replace(nameRe, (m) => aliasOf.get(m) ?? m) : text),
-    back: (text: string) => text.replace(edge("(?:Person|Hold) \\d+"), (m) => firstFor.get(m) ?? m),
+    out: (text: string) => (nameRe ? text.replace(nameRe, (m, g: string) => { const base = g ? m.slice(0, -g.length) : m; const a = aliasOf.get(base.toLowerCase()); return a ? a + g : m; }) : text),
+    back: (text: string) => text.replace(edge("(?:Person|Hold) \\d+"), (m, g: string) => { const base = g ? m.slice(0, -g.length) : m; const n = firstFor.get(base); return n ? n + g : m; }),
   };
 }
 
@@ -140,7 +142,7 @@ export async function askMemberService(db: Db, ctx: AccessContext, question: str
       openCharges: p.openCharges.map((c) => ({ ...c, description: aliases.out(c.description) })),
     })),
   };
-  const text = aliases.back(await assistant.answer(input));
+  // Tælles før kaldet, så fejlede forsøg også bruger af den daglige grænse.
   await logAudit(db, { action: "ai.member_question", actorUserId: ctx.userId, detail: { external: assistant.external, length: q.length } });
-  return text;
+  return aliases.back(await assistant.answer(input));
 }

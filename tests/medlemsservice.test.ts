@@ -129,6 +129,23 @@ describe("ekstern udbyder", () => {
   });
 });
 
+describe("aliasser: bøjning og bogstavtype", () => {
+  const al = makeAliases([{ names: ["Emma"] }, { names: ["Mille"] }], ["U9"]);
+  it("tager genitiv", () => {
+    expect(al.out("Hvornår er Emmas træning? Og Milles?")).toBe("Hvornår er Person 1s træning? Og Person 2s?");
+  });
+  it("tager små og store bogstaver", () => {
+    expect(al.out("hvad skylder emma? EMMA og mille")).toBe("hvad skylder Person 1? Person 1 og Person 2");
+  });
+  it("sætter navnene ind igen i genitiv", () => {
+    expect(al.back("Person 1s træning er på Hold 1s bane")).toBe("Emmas træning er på U9s bane");
+  });
+  it("ved delt efternavn vinder den første", () => {
+    const sh = makeAliases([{ names: ["Ib", "Dahl"] }, { names: ["Jo", "Dahl"] }], []);
+    expect(sh.out("Dahl")).toBe("Person 1");
+  });
+});
+
 describe("begrænsning", () => {
   it("højst 30 spørgsmål i døgnet", async () => {
     for (let i = 0; i < 40; i++) await db.insert(auditLog).values({ actorUserId: other.userId, action: "ai.member_question", at: new Date(now.getTime() - 3_600_000) }).catch(() => {});
