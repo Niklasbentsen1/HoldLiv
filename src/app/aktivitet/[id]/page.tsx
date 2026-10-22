@@ -111,7 +111,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
               g.list.length === 0 ? null : (
                 <div key={g.key}>
                   <h3 className="group-title">
-                    <i className={g.key} />
+                    <i className={g.key === "wait" ? "maybe" : g.key} />
                     {g.label} <span className="muted">· {g.list.length}</span>
                   </h3>
                   <ul className="people">
