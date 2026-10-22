@@ -25,7 +25,8 @@ export interface SavedCardRef {
   last4: string | null;
 }
 
-export type OffSessionResult = { ok: true; paymentIntentId: string } | { ok: false; reason: string };
+/** `uncertain`: svaret fra udbyderen manglede (timeout, netværk, serverfejl), så pengene kan være trukket. Må ikke behandles som en afvisning. */
+export type OffSessionResult = { ok: true; paymentIntentId: string } | { ok: false; reason: string; uncertain?: boolean };
 
 export interface PaymentProvider {
   name: "stripe" | "mock";
@@ -34,7 +35,9 @@ export interface PaymentProvider {
   /** Efter en betaling med saveCard: det gemte kort (kunde og betalingsmetode hos foreningens Stripe-konto). */
   retrieveSavedCard(sessionId: string, connectedAccountId: string | null): Promise<SavedCardRef | null>;
   /** Trækker et gemt kort uden at betaleren er til stede. Kort, der kræver 3-D Secure, afvises (betaleren betaler selv). */
-  chargeSavedCard(req: { chargeId: string; amountOre: number; description: string; card: SavedCardRef; connectedAccountId: string | null }): Promise<OffSessionResult>;
+  chargeSavedCard(req: { chargeId: string; attempt: number; amountOre: number; description: string; card: SavedCardRef; connectedAccountId: string | null }): Promise<OffSessionResult>;
+  /** Er opkrævningen allerede betalt hos udbyderen (en tidligere uklar kørsel)? Giver betalingens id. */
+  findPaymentForCharge(chargeId: string, connectedAccountId: string | null): Promise<string | null>;
   /** Fjerner et gemt kort hos udbyderen. */
   removeCard(card: SavedCardRef, connectedAccountId: string | null): Promise<void>;
   /** Opretter foreningens Stripe-konto (første gang) og giver et link til Stripes onboarding. */
@@ -60,6 +63,9 @@ export const mockProvider: PaymentProvider = {
     if (req.card.paymentMethodId.includes("fail")) return { ok: false, reason: "Kortet blev afvist" };
     return { ok: true, paymentIntentId: `pi_test_${randomBytes(8).toString("hex")}` };
   },
+  async findPaymentForCharge() {
+    return null;
+  },
   async removeCard() {},
   async connectAccount(existing, baseUrl) {
     return { accountId: existing ?? `acct_test_${randomBytes(6).toString("hex")}`, url: `${baseUrl}/kasse?stripe=klar` };
@@ -67,6 +73,15 @@ export const mockProvider: PaymentProvider = {
 };
 
 type FetchFn = typeof fetch;
+
+class StripeError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
 
 /** Stripe's API taler form-kodning med nøgler som line_items[0][price_data][currency]. */
 export function formEncode(params: Record<string, unknown>, prefix = ""): string[] {
@@ -81,7 +96,7 @@ export function formEncode(params: Record<string, unknown>, prefix = ""): string
 }
 
 export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): PaymentProvider {
-  const call = async (path: string, params: Record<string, unknown>, account?: string | null, method: "POST" | "GET" = "POST") => {
+  const call = async (path: string, params: Record<string, unknown>, account?: string | null, method: "POST" | "GET" = "POST", idempotencyKey?: string) => {
     const query = method === "GET" && Object.keys(params).length ? `?${formEncode(params).join("&")}` : "";
     const res = await fetchFn(`https://api.stripe.com/v1/${path}${query}`, {
       method,
@@ -89,11 +104,12 @@ export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): Pay
         Authorization: `Bearer ${secretKey}`,
         ...(method === "POST" ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
         ...(account ? { "Stripe-Account": account } : {}),
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       },
       body: method === "POST" ? formEncode(params).join("&") : undefined,
     });
     const body = (await res.json()) as Record<string, unknown> & { error?: { message?: string } };
-    if (!res.ok) throw new Error(`Stripe: ${body.error?.message ?? res.status}`);
+    if (!res.ok) throw new StripeError(`Stripe: ${body.error?.message ?? res.status}`, res.status);
     return body;
   };
 
@@ -147,11 +163,21 @@ export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): Pay
             metadata: { charge_id: req.chargeId },
           },
           req.connectedAccountId,
+          "POST",
+          `autocharge-${req.chargeId}-${req.attempt}`,
         )) as { id: string; status: string };
         return pi.status === "succeeded" ? { ok: true, paymentIntentId: pi.id } : { ok: false, reason: `Betalingen blev ikke gennemført (${pi.status})` };
       } catch (e) {
-        return { ok: false, reason: e instanceof Error ? e.message : "Betalingen blev ikke gennemført" };
+        // Kun et svar fra Stripe på 4xx (kortet afvist, ugyldige data) er et sikkert nej. Alt andet kan være et træk, vi ikke fik svar på.
+        const sure = e instanceof StripeError && e.status >= 400 && e.status < 500 && e.status !== 409 && e.status !== 429;
+        return { ok: false, reason: e instanceof Error ? e.message : "Betalingen blev ikke gennemført", uncertain: !sure };
       }
+    },
+    async findPaymentForCharge(chargeId, account) {
+      const r = (await call("payment_intents/search", { query: `metadata['charge_id']:'${chargeId.replace(/[^0-9a-f-]/gi, "")}' AND status:'succeeded'`, limit: 1 }, account, "GET")) as {
+        data?: { id: string }[];
+      };
+      return r.data?.[0]?.id ?? null;
     },
     async removeCard(card, account) {
       await call(`payment_methods/${encodeURIComponent(card.paymentMethodId)}/detach`, {}, account);

@@ -125,6 +125,14 @@ async function attempt(back: string, fn: () => Promise<unknown>) {
   }
 }
 
+function paymentProviderOrUndefined() {
+  try {
+    return getPaymentProvider();
+  } catch {
+    return undefined;
+  }
+}
+
 async function deliverFromEnv() {
   return { mail: sendMail, sms: getSmsSender(), push: getPushSender(), devicePush: getDevicePushSender(), baseUrl: await origin() };
 }
@@ -356,7 +364,7 @@ export async function saveConsent(formData: FormData) {
 
 export async function deleteAccountAction(formData: FormData) {
   const { ctx } = await requireSession();
-  await attempt("/indstillinger/privatliv", () => deleteMyAccount(db, ctx, str(formData, "email")));
+  await attempt("/indstillinger/privatliv", () => deleteMyAccount(db, ctx, str(formData, "email"), paymentProviderOrUndefined()));
   await endSession();
   redirect("/login?fejl=" + encodeURIComponent("Din konto og dine oplysninger er slettet."));
 }

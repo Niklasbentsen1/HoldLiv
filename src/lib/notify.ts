@@ -25,7 +25,9 @@ export const KINDS = {
   },
   payment: {
     label: "Betaling og automatisk træk",
-    description: "Når et gemt kort er trukket, eller en automatisk betaling ikke kunne gennemføres, så du selv kan betale.",
+    description: "Når et gemt kort er trukket, eller en automatisk betaling ikke kunne gennemføres, så du selv kan betale. Mail kan ikke slås fra, fordi der er tale om penge.",
+    // Der trækkes penge, så betaleren skal altid kunne se det.
+    mandatory: ["mail"],
   },
   event_reminder: {
     label: "Påmindelser om at svare",
@@ -38,6 +40,8 @@ export type Kind = keyof typeof KINDS;
 export const DEFAULT_ENABLED: Record<Channel, boolean> = { mail: true, push: true, sms: false };
 
 /** Standard for en kanal og slags besked, før man selv har valgt. */
+export const isMandatory = (kind: Kind, channel: Channel) => ((KINDS[kind] as { mandatory?: readonly Channel[] }).mandatory ?? []).includes(channel);
+
 export function defaultEnabled(kind: Kind, channel: Channel): boolean {
   const own = (KINDS[kind] as { defaults?: Partial<Record<Channel, boolean>> }).defaults?.[channel];
   return own ?? DEFAULT_ENABLED[channel];

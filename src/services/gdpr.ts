@@ -25,6 +25,7 @@ import {
   payments,
   posts,
   profiles,
+  savedCards,
   teamMembers,
   teamTasks,
   teams,
@@ -32,6 +33,7 @@ import {
 } from "../db/schema";
 import { canActAs, ForbiddenError, type AccessContext } from "../auth/permissions";
 import { logAudit } from "./audit";
+import type { PaymentProvider } from "../lib/payments";
 
 /** Versionen af privatlivspolitikken. Hæves, når teksten ændres væsentligt. */
 export const PRIVACY_VERSION = "2026-10-udkast";
@@ -242,13 +244,27 @@ async function anonymize(tx: Tx, profileIds: string[], now: Date) {
  * Sletter ens egen konto: login, beskeder, opslag, svar og tilmeldinger fjernes, og profilen anonymiseres. Opkrævninger
  * og betalinger gemmes uden navn. Kræver, at man skriver sin e-mail som bekræftelse. Børn, hvor man er eneste værge, slettes med.
  */
-export async function deleteMyAccount(db: Db, ctx: AccessContext, confirmEmail: string) {
+export async function deleteMyAccount(db: Db, ctx: AccessContext, confirmEmail: string, provider?: PaymentProvider) {
   const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, ctx.userId));
   if (!u || confirmEmail.trim().toLowerCase() !== u.email) throw new Error("Skriv din e-mailadresse for at bekræfte.");
   const plan = await planDeletion(db, ctx);
   if (plan.blockers.length > 0) throw new Error(plan.blockers.join(" "));
   const clubIds = await clubsOf(db, plan.profileIds);
+  // Gemte kort frakobles hos udbyderen, før kontoen slettes, så der ikke kan trækkes mere.
+  const cards = await db
+    .select({ id: savedCards.id, customerId: savedCards.customerId, paymentMethodId: savedCards.paymentMethodId, brand: savedCards.brand, last4: savedCards.last4, account: clubs.stripeAccountId })
+    .from(savedCards)
+    .innerJoin(clubs, eq(clubs.id, savedCards.clubId))
+    .where(and(inArray(savedCards.payerProfileId, plan.profileIds), isNull(savedCards.removedAt)));
+  for (const k of cards) {
+    try {
+      await provider?.removeCard(k, k.account);
+    } catch (e) {
+      console.error("Kortet kunne ikke fjernes hos udbyderen", e);
+    }
+  }
   await db.transaction(async (tx) => {
+    if (cards.length) await tx.update(savedCards).set({ removedAt: ctx.now }).where(inArray(savedCards.id, cards.map((k) => k.id)));
     await anonymize(tx, plan.profileIds, ctx.now);
   });
   for (const clubId of clubIds) await logAudit(db, { action: "gdpr.deleted", clubId, detail: { profiles: plan.profileIds.length } });

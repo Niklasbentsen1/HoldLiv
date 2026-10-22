@@ -43,7 +43,7 @@ export default async function Payments({ searchParams }: { searchParams: Promise
               <input type="hidden" name="chargeId" value={c.id} />
               {c.autoChargeEnabled && (
                 <label className="small">
-                  <input name="saveCard" type="checkbox" /> Husk kortet, så fremtidige opkrævninger trækkes automatisk
+                  <input name="saveCard" type="checkbox" /> Husk kortet, så ubetalte og fremtidige opkrævninger trækkes automatisk, når de er forfaldne
                 </label>
               )}
               <button className="primary">Betal {kr(c.amountOre)}</button>
