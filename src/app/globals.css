@@ -147,3 +147,28 @@ h3.group.none { color: var(--muted); }
   .row { grid-template-columns: 1fr; }
   header nav { gap: 10px; font-size: 14px; }
 }
+
+/* --- Kasse og betaling --- */
+header nav { flex-wrap: wrap; justify-content: flex-end; }
+.subnav { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 16px; }
+.subnav a { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--text); text-decoration: none; font-size: 14px; background: var(--card); }
+.subnav a.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 2px; color: var(--text); text-decoration: none; }
+.stat strong { font-size: 22px; letter-spacing: -0.01em; }
+.stat span { font-size: 13px; color: var(--muted); }
+.stat.warn strong { color: var(--no); }
+.tag.open { background: #fdecd3; color: #8a5a12; }
+.tag.overdue { background: #fbe9e9; color: #8f2424; }
+.tag.paid { background: var(--brand-soft); color: var(--brand); }
+.tag.refunded, .tag.cancelled { background: var(--line); color: var(--muted); }
+.amount { font-weight: 600; white-space: nowrap; }
+.spread { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.ok { background: var(--brand-soft); color: var(--brand); border-radius: 8px; padding: 10px 12px; }
+.test-banner { background: #fff7e0; color: #5a4300; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.checkout { text-align: center; padding: 24px 16px; }
+.checkout .big { font-size: 34px; font-weight: 700; margin: 8px 0 16px; }
+a.chip { text-decoration: none; }
+header nav { gap: 6px 14px; }
+.spread .who { float: none; margin-left: 8px; }
+.tag { white-space: nowrap; }

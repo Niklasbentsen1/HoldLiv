@@ -13,10 +13,10 @@ export default async function NewEvent({ params, searchParams }: { params: Promi
   const { fejl } = await searchParams;
   const { ctx } = await requireSession(`/hold/${id}/ny`);
   const team = await getTeam(db, ctx, id);
-  if (!team.canManage) return <Shell>Kun holdets trænere kan oprette aktiviteter.</Shell>;
+  if (!team.canManage) return <Shell ctx={ctx}>Kun holdets trænere kan oprette aktiviteter.</Shell>;
 
   return (
-    <Shell admin={ctx.adminClubs.size > 0}>
+    <Shell ctx={ctx}>
       <Link href={`/hold/${id}`} className="muted small">
         ← {team.name}
       </Link>

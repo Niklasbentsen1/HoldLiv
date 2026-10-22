@@ -15,6 +15,13 @@
       "when": 1792656239614,
       "tag": "0001_login_kalender",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792657575856,
+      "tag": "0002_kontingent",
+      "breakpoints": true
     }
   ]
 }

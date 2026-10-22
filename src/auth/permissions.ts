@@ -16,6 +16,8 @@ export interface AccessContext {
   profileId: ProfileId;
   /** Foreninger hvor egen profil er admin. */
   adminClubs: ReadonlySet<ClubId>;
+  /** Foreninger hvor egen profil er kasserer. */
+  treasurerClubs: ReadonlySet<ClubId>;
   /** Hold hvor egen profil er træner. */
   coachTeams: ReadonlySet<TeamId>;
   /** Børneprofiler som login'et aktuelt er værge for (under 18 år). */
@@ -59,7 +61,9 @@ export type Permission =
   | { action: "profile.view"; profile: ProfileFacts }
   | { action: "profile.edit"; profile: ProfileFacts }
   | { action: "profile.guardians.manage"; profile: ProfileFacts }
-  | { action: "profile.actAs"; profileId: ProfileId };
+  | { action: "profile.actAs"; profileId: ProfileId }
+  | { action: "finance.manage"; clubId: ClubId }
+  | { action: "charge.pay"; profileId: ProfileId };
 
 export type Action = Permission["action"];
 
@@ -73,6 +77,9 @@ export function canActAs(ctx: AccessContext, profileId: ProfileId): boolean {
 }
 
 const adminOfProfile = (ctx: AccessContext, p: ProfileFacts) => p.clubIds.some((c) => ctx.adminClubs.has(c));
+const treasurerOfProfile = (ctx: AccessContext, p: ProfileFacts) => p.clubIds.some((c) => ctx.treasurerClubs.has(c));
+/** Admin eller kasserer: medlemslisten, kontingenter og betalinger. */
+const handlesFinance = (ctx: AccessContext, clubId: ClubId) => isAdmin(ctx, clubId) || ctx.treasurerClubs.has(clubId);
 const coachOfProfile = (ctx: AccessContext, p: ProfileFacts) => p.teamIds.some((t) => ctx.coachTeams.has(t));
 
 export function can(ctx: AccessContext, perm: Permission): boolean {
@@ -110,6 +117,7 @@ export function can(ctx: AccessContext, perm: Permission): boolean {
       return (
         canActAs(ctx, perm.profile.profileId) ||
         adminOfProfile(ctx, perm.profile) ||
+        treasurerOfProfile(ctx, perm.profile) ||
         coachOfProfile(ctx, perm.profile)
       );
 
@@ -120,6 +128,13 @@ export function can(ctx: AccessContext, perm: Permission): boolean {
       return canActAs(ctx, perm.profile.profileId) || adminOfProfile(ctx, perm.profile);
 
     case "profile.actAs":
+      return canActAs(ctx, perm.profileId);
+
+    case "finance.manage":
+      return handlesFinance(ctx, perm.clubId);
+
+    case "charge.pay":
+      // Man betaler for sig selv og sine børn. Kassereren registrerer betalinger, men betaler ikke på andres vegne.
       return canActAs(ctx, perm.profileId);
   }
 }

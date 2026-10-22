@@ -25,7 +25,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   ] as const;
 
   return (
-    <Shell admin={ctx.adminClubs.size > 0}>
+    <Shell ctx={ctx}>
       <Link href={`/hold/${e.teamId}`} className="muted small">
         ← {e.teamName}
       </Link>

@@ -3,6 +3,8 @@
 // Den viser også Niklas' eksempel: én profil med flere roller.
 import type { Db } from "./client";
 import { eventResponses } from "./schema";
+import { addDays, localDate } from "../lib/money";
+import { mockProvider } from "../lib/payments";
 import { loadAccessContext } from "../auth/context";
 import {
   addClubMember,
@@ -13,7 +15,17 @@ import {
   createEvent,
   createEventSeries,
   createTeam,
+  completeCheckout,
+  createFee,
+  createSingleCharge,
   grantClubAdmin,
+  grantTreasurerByEmail,
+  listCharges,
+  registerManualPayment,
+  runCharges,
+  setTeamDefaultFee,
+  startCheckout,
+  updateMembership,
   registerUser,
   type PersonInput,
 } from "../services";
@@ -88,6 +100,17 @@ export async function seedDemo(db: Db, now = new Date()) {
   const u9 = await createTeam(db, karenCtx, club.id, "U9 piger", "2026/27");
   const u11 = await createTeam(db, karenCtx, club.id, "U11 drenge", "2026/27");
   const senior = await createTeam(db, karenCtx, club.id, "Senior herrer", "2026/27");
+  // Kontingent: Sofie er kasserer og sætter satserne op, før spillerne kommer på holdene,
+  // så de automatisk får holdets kontingent.
+  await grantTreasurerByEmail(db, karenCtx, club.id, "sofie@holdliv.test");
+  const sofieCtx = await loadAccessContext(db, sofie.user.id, now);
+  const kidsFee = await createFee(db, sofieCtx, club.id, { name: "Børn under 13 år", amountOre: 65000, interval: "half_year" });
+  const seniorFee = await createFee(db, sofieCtx, club.id, { name: "Senior", amountOre: 110000, interval: "half_year" });
+  const passiveFee = await createFee(db, sofieCtx, club.id, { name: "Passivt medlem", amountOre: 20000, interval: "year" });
+  await setTeamDefaultFee(db, sofieCtx, u9.id, kidsFee.id);
+  await setTeamDefaultFee(db, sofieCtx, u11.id, kidsFee.id);
+  await setTeamDefaultFee(db, sofieCtx, senior.id, seniorFee.id);
+
   await addTeamMember(db, karenCtx, u9.id, mette.profile.id, "coach");
   await addTeamMember(db, karenCtx, u11.id, jonas.profile.id, "coach");
   await addTeamMember(db, karenCtx, senior.id, peter.profile.id, "coach");
@@ -175,6 +198,32 @@ export async function seedDemo(db: Db, now = new Date()) {
   const demoRows = rows.filter((r) => !(r.eventId === u9Match.id && r.profileId === emma.id));
   if (demoRows.length) await db.insert(eventResponses).values(demoRows);
 
+  // Kontingent for indeværende halvår. Fristen er overskredet, og de fleste har betalt.
+  // Trænerne er gratister; Karen er passivt medlem.
+  for (const p of [mette, jonas, peter]) await updateMembership(db, sofieCtx, club.id, p.profile.id, { exempt: true });
+  await updateMembership(db, sofieCtx, club.id, karen.profile.id, { feeId: passiveFee.id });
+  const today = localDate(now);
+  const dueDate = addDays(today, -14);
+  for (const fee of [kidsFee, seniorFee, passiveFee]) await runCharges(db, sofieCtx, fee.id, today, dueDate);
+  const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000);
+  const payerOf = new Map([...guardianOf, [karen.profile.id, karen.user.id]]);
+  const open = await listCharges(db, sofieCtx, club.id, "open");
+  for (const c of open) {
+    // Emma mangler, så Niklas kan prøve at betale. Noor og Oliver er i restance.
+    if ([emma.id, noor.id, oliver.id, ali.profile.id].includes(c.profileId)) continue;
+    const r = pick(`kontingent${c.profileId}`);
+    if (r < 0.3) {
+      await registerManualPayment(db, { ...sofieCtx, now: daysAgo(20) }, c.id, "MobilePay til kassereren");
+    } else {
+      const payer = payerOf.get(c.profileId) ?? playerUser.get(c.profileId)!;
+      const ctx = await loadAccessContext(db, payer, now);
+      await startCheckout(db, ctx, c.id, mockProvider, "http://localhost:3000");
+      const [{ providerRef }] = await db.query.payments.findMany({ where: (p, { eq }) => eq(p.chargeId, c.id) });
+      await completeCheckout(db, providerRef!, { now: daysAgo(10 + Math.floor(r * 30)) });
+    }
+  }
+  await createSingleCharge(db, sofieCtx, club.id, ida.id, { description: "Træningstrøje med navn", amountOre: 15000, dueDate: addDays(today, 10) });
+
   const upcoming = (teamId: string) =>
     allEvents.filter((e) => e.teamId === teamId && e.type === "training" && e.startsAt > now).sort((a, b) => +a.startsAt - +b.startsAt)[0];
 
@@ -184,6 +233,7 @@ export async function seedDemo(db: Db, now = new Date()) {
     emma,
     kids: { emma, ida, lukas, noor, freja, kasper, alma, oliver, william },
     teams: { u9, u11, senior },
+    fees: { kids: kidsFee, senior: seniorFee, passive: passiveFee },
     events: { u9Training: upcoming(u9.id), u9Match, u9PastMatch, seniorTraining: upcoming(senior.id) },
   };
 }

@@ -11,6 +11,7 @@ const ctx = (over: Partial<AccessContext> = {}): AccessContext => ({
   userId: "u",
   profileId: "me",
   adminClubs: new Set(),
+  treasurerClubs: new Set(),
   coachTeams: new Set(),
   wards: new Set(),
   now: new Date("2026-10-22T12:00:00Z"),

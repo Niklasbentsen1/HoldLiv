@@ -1,12 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { logout } from "../app/actions";
+import type { AccessContext } from "../auth/permissions";
 
-export function Shell({ children, admin, active }: { children: ReactNode; admin?: boolean; active?: string }) {
+export function Shell({ children, ctx, active }: { children: ReactNode; ctx: AccessContext; active?: string }) {
   const nav = [
     { href: "/", label: "Kalender" },
     { href: "/familie", label: "Familie" },
-    ...(admin ? [{ href: "/forening", label: "Forening" }] : []),
+    { href: "/betaling", label: "Betaling" },
+    ...(ctx.adminClubs.size ? [{ href: "/forening", label: "Forening" }] : []),
+    ...(ctx.adminClubs.size || ctx.treasurerClubs.size ? [{ href: "/kasse", label: "Kasse" }] : []),
   ];
   return (
     <main>

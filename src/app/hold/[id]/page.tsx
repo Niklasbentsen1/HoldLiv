@@ -22,7 +22,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
   const playerCount = team.players.length;
 
   return (
-    <Shell admin={ctx.adminClubs.size > 0}>
+    <Shell ctx={ctx}>
       <h1>{team.name}</h1>
       <p className="muted">
         {team.clubName}
