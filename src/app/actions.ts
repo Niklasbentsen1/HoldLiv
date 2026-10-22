@@ -18,7 +18,10 @@ import {
   respondToEventNotifying,
   rotateInviteCode,
   setEventCancelledNotifying,
+  createPost,
   deleteMessage,
+  deletePost,
+  setPostPinned,
   postMessage,
   removePushSubscription,
   resetFeedToken,
@@ -596,5 +599,38 @@ export async function deleteChatMessageAction(formData: FormData) {
   const threadId = str(formData, "threadId");
   const back = `/hold/${str(formData, "teamId")}/chat?samtale=${threadId}`;
   await attempt(back, () => deleteMessage(db, ctx, str(formData, "messageId")));
+  redirect(back);
+}
+
+// --- Nyheder og opslagstavle ---
+
+export async function createPostAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const kind = str(formData, "kind") === "board" ? "board" : "news";
+  const back = `/nyheder${kind === "board" ? "?type=opslag" : ""}`;
+  await attempt(back, async () =>
+    createPost(db, ctx, await deliverFromEnv(), {
+      kind,
+      scope: str(formData, "scope"),
+      title: str(formData, "title"),
+      body: String(formData.get("body") ?? ""),
+      pinned: formData.get("pinned") === "on",
+      expiresInDays: kind === "board" && str(formData, "days") ? Number(str(formData, "days")) : null,
+    }),
+  );
+  redirect(back);
+}
+
+export async function pinPostAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = safeNext(str(formData, "back"));
+  await attempt(back, () => setPostPinned(db, ctx, str(formData, "postId"), str(formData, "pinned") === "1"));
+  redirect(back);
+}
+
+export async function deletePostAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = safeNext(str(formData, "back"));
+  await attempt(back, () => deletePost(db, ctx, str(formData, "postId")));
   redirect(back);
 }

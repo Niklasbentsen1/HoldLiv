@@ -5,6 +5,10 @@ export type Channel = (typeof CHANNELS)[number];
 export const CHANNEL_LABEL: Record<Channel, string> = { mail: "Mail", push: "Push i browseren", sms: "SMS" };
 
 export const KINDS = {
+  news: {
+    label: "Nyheder fra foreningen og holdet",
+    description: "Når foreningen eller et af dine hold skriver en nyhed. Opslagstavlen giver ingen beskeder.",
+  },
   chat: {
     label: "Nye beskeder i holdchatten",
     description: "Højst én besked pr. samtale hvert tiende minut, så du ikke bliver overdænget.",
