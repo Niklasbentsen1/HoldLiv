@@ -99,6 +99,27 @@
       "when": 1792676812098,
       "tag": "0013_nyheder",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792678027108,
+      "tag": "0014_sikkerhed",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792688717597,
+      "tag": "0015_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792689131769,
+      "tag": "0016_mfa_forsog",
+      "breakpoints": true
     }
   ]
 }

@@ -101,18 +101,21 @@ async function findOrCreateUser(db: Db, email: string): Promise<string> {
 }
 
 /** Opretter en session. Returnerer værdien til cookien. */
-export async function createSession(db: Db, userId: string, now = new Date()) {
+export async function createSession(db: Db, userId: string, now = new Date(), opts: { skipMfa?: boolean } = {}) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(now.getTime() + SESSION_DAYS * 86_400_000);
-  await db.insert(sessions).values({ id: sha256(token), userId, expiresAt, createdAt: now });
-  return { token, expiresAt };
+  // Har kontoen to-faktor, giver sessionen først adgang, når koden er tastet (se auth/mfa.ts).
+  const [u] = await db.select({ at: users.totpEnabledAt }).from(users).where(eq(users.id, userId));
+  const mfaPending = !!u?.at && !opts.skipMfa;
+  await db.insert(sessions).values({ id: sha256(token), userId, expiresAt, createdAt: now, mfaPending });
+  return { token, expiresAt, mfaPending };
 }
 
 export async function resolveSession(db: Db, token: string, now = new Date()): Promise<string | null> {
   const [s] = await db
     .select({ userId: sessions.userId })
     .from(sessions)
-    .where(and(eq(sessions.id, sha256(token)), gt(sessions.expiresAt, now)));
+    .where(and(eq(sessions.id, sha256(token)), gt(sessions.expiresAt, now), eq(sessions.mfaPending, false)));
   return s?.userId ?? null;
 }
 

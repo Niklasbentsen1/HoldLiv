@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getFeedToken, getNotificationPrefs, listMyNotifications } from "../../services";
 import { origin } from "../../lib/origin";
 import { db } from "../../lib/db";
@@ -25,6 +26,11 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       <PageHead title="Beskeder" sub="Vælg, hvordan du vil have besked om ændringer og aflysninger. Du får også beskeder om dine børn." />
       <ErrorBox message={fejl} />
       {gemt && <p className="pill">Gemt</p>}
+      <section className="card stack" style={{ marginBottom: 20 }}>
+        <h2 className="section-head">To-faktor</h2>
+        <p className="muted">Et ekstra trin ved login. Kræves for foreningens admin og kasserer.</p>
+        <Link href="/indstillinger/to-faktor" className="button">Indstillinger for to-faktor</Link>
+      </section>
       <section className="card stack" style={{ marginBottom: 20 }}>
         <h2 className="section-head">Push i denne browser</h2>
         <PushToggle publicKey={vapidPublicKey()} />

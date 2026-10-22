@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { canActAs, ForbiddenError } from "../auth/permissions";
 import { LoginError, requestLogin, sha256, verifyCode } from "../auth/login";
+import { beginTotpSetup, completeMfa, confirmTotpSetup, disableTotp, MfaError, regenerateRecoveryCodes } from "../auth/mfa";
 import {
   addCoachByEmail,
   addGuardianByEmail,
@@ -79,7 +80,7 @@ import { CHANNELS, KINDS } from "../lib/notify";
 import { origin } from "../lib/origin";
 import { getPushSender } from "../lib/push";
 import { getSmsSender } from "../lib/sms";
-import { SESSION_COOKIE, endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
+import { SESSION_COOKIE, currentSessionToken, endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
 import { parseLocalDateTime } from "../lib/time";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -92,7 +93,7 @@ async function attempt(back: string, fn: () => Promise<unknown>) {
   } catch (e) {
     const message =
       e instanceof ForbiddenError ? "Det har du ikke adgang til." : e instanceof Error ? e.message : "Noget gik galt.";
-    if (!(e instanceof ForbiddenError || e instanceof LoginError)) console.error(e);
+    if (!(e instanceof ForbiddenError || e instanceof LoginError || e instanceof MfaError)) console.error(e);
     redirect(`${back}${back.includes("?") ? "&" : "?"}fejl=${encodeURIComponent(message)}`);
   }
 }
@@ -118,16 +119,57 @@ export async function requestLoginAction(formData: FormData) {
 export async function verifyCodeAction(formData: FormData) {
   const email = str(formData, "email");
   const next = safeNext(str(formData, "next"));
+  let pending = false;
   await attempt(`/login/kode?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`, async () => {
-    await startSession(await verifyCode(db, email, str(formData, "code")));
+    pending = await startSession(await verifyCode(db, email, str(formData, "code")));
   });
+  redirect(pending ? `/login/to-faktor?next=${encodeURIComponent(next)}` : next);
+}
+
+/** Andet trin af login for konti med to-faktor. */
+export async function completeMfaAction(formData: FormData) {
+  const next = safeNext(str(formData, "next"));
+  const token = await currentSessionToken();
+  if (!token) redirect("/login");
+  await attempt(`/login/to-faktor?next=${encodeURIComponent(next)}`, () => completeMfa(db, token, str(formData, "code")));
   redirect(next);
 }
+
+export interface MfaState {
+  error?: string;
+  secret?: string;
+  uri?: string;
+  codes?: string[];
+  done?: boolean;
+}
+
+async function mfaStep(fn: (userId: string) => Promise<MfaState>): Promise<MfaState> {
+  const session = await getSession({ allowMfaSetup: true });
+  if (!session) redirect("/login");
+  try {
+    return await fn(session.ctx.userId);
+  } catch (e) {
+    if (e instanceof MfaError) return { error: e.message };
+    console.error(e);
+    return { error: "Noget gik galt." };
+  }
+}
+
+export const beginMfaAction = async (): Promise<MfaState> => mfaStep(async (u) => beginTotpSetup(db, u));
+export const confirmMfaAction = async (_: MfaState, formData: FormData): Promise<MfaState> =>
+  mfaStep(async (u) => ({ codes: await confirmTotpSetup(db, u, str(formData, "code"), new Date(), await currentSessionToken()), done: true }));
+export const disableMfaAction = async (_: MfaState, formData: FormData): Promise<MfaState> =>
+  mfaStep(async (u) => {
+    await disableTotp(db, u, str(formData, "code"));
+    return { done: true };
+  });
+export const regenerateCodesAction = async (_: MfaState, formData: FormData): Promise<MfaState> =>
+  mfaStep(async (u) => ({ codes: await regenerateRecoveryCodes(db, u, str(formData, "code")), done: true }));
 
 /** Kun til demoen: log ind som en demoperson uden e-mail. */
 export async function demoLogin(formData: FormData) {
   if (process.env.NODE_ENV === "production" && process.env.DEMO_LOGIN !== "1") throw new Error("Demo-login er slået fra");
-  await startSession(str(formData, "userId"));
+  await startSession(str(formData, "userId"), { skipMfa: true });
   redirect("/");
 }
 

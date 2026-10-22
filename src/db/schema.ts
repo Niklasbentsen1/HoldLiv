@@ -36,8 +36,46 @@ export const responseStatus = pgEnum("response_status", ["yes", "no", "maybe"]);
 export const users = pgTable("users", {
   id: id(),
   email: text("email").notNull().unique(),
+  // To-faktor (TOTP). Hemmeligheden gemmes krypteret, når TOTP_ENC_KEY er sat. pending = opsat, men endnu ikke bekræftet.
+  totpSecret: text("totp_secret"),
+  totpPendingSecret: text("totp_pending_secret"),
+  totpEnabledAt: timestamp("totp_enabled_at", { withTimezone: true }),
+  totpLastStep: integer("totp_last_step"),
+  // Loft over forkerte koder pr. konto, uanset hvilken session der gætter.
+  totpFailures: integer("totp_failures").notNull().default(0),
+  totpLockedUntil: timestamp("totp_locked_until", { withTimezone: true }),
   createdAt: createdAt(),
 });
+
+// Engangskoder til at komme ind, hvis man har mistet sin autentificeringsapp. Kun hashes gemmes.
+export const recoveryCodes = pgTable(
+  "recovery_codes",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [index("recovery_codes_user_idx").on(t.userId)],
+);
+
+// Revisionslog: hvem gjorde hvad, og hvornår. Rækker slettes aldrig af appen.
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: id(),
+    at: createdAt(),
+    clubId: uuid("club_id").references(() => clubs.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    targetType: text("target_type"),
+    targetId: text("target_id"),
+    detail: jsonb("detail"),
+  },
+  (t) => [index("audit_log_club_idx").on(t.clubId, t.at), index("audit_log_actor_idx").on(t.actorUserId, t.at)],
+);
 
 // Login med engangskode/link på e-mail. Kun hashes gemmes, aldrig selve koden.
 export const loginTokens = pgTable(
@@ -64,6 +102,9 @@ export const sessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    // Sat, når kontoen har to-faktor og koden endnu ikke er tastet. Sessionen giver ingen adgang, før den er fri.
+    mfaPending: boolean("mfa_pending").notNull().default(false),
+    mfaAttempts: integer("mfa_attempts").notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [index("sessions_user_idx").on(t.userId)],

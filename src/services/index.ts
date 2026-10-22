@@ -17,6 +17,7 @@ import {
 } from "../db/schema";
 import { assertCan, isMinor, type AccessContext } from "../auth/permissions";
 import { loadEventFacts, loadProfileFacts, loadTeamFacts } from "../auth/context";
+import { logAudit } from "./audit";
 import { applyTeamDefaultFee, newInviteCode } from "./teams";
 
 export interface PersonInput {
@@ -85,12 +86,14 @@ export async function createClub(db: Db, ctx: AccessContext, name: string, slug:
 export async function addClubMember(db: Db, ctx: AccessContext, clubId: string, profileId: string) {
   assertCan(ctx, { action: "club.manage", clubId });
   await db.insert(clubMemberships).values({ clubId, profileId }).onConflictDoNothing();
+  await logAudit(db, { action: "club.member_added", clubId, actorUserId: ctx.userId, targetType: "profile", targetId: profileId });
 }
 
 export async function grantClubAdmin(db: Db, ctx: AccessContext, clubId: string, profileId: string, title?: string) {
   assertCan(ctx, { action: "club.manage", clubId });
   await db.insert(clubMemberships).values({ clubId, profileId }).onConflictDoNothing();
   await db.insert(clubRoles).values({ clubId, profileId, role: "admin", title }).onConflictDoNothing();
+  await logAudit(db, { action: "club.admin_granted", clubId, actorUserId: ctx.userId, targetType: "profile", targetId: profileId });
 }
 
 export async function revokeClubAdmin(db: Db, ctx: AccessContext, clubId: string, profileId: string) {
@@ -109,6 +112,7 @@ export async function revokeClubAdmin(db: Db, ctx: AccessContext, clubId: string
       .delete(clubRoles)
       .where(and(eq(clubRoles.clubId, clubId), eq(clubRoles.profileId, profileId), eq(clubRoles.role, "admin")));
   });
+  await logAudit(db, { action: "club.admin_revoked", clubId, actorUserId: ctx.userId, targetType: "profile", targetId: profileId });
 }
 
 export async function createTeam(db: Db, ctx: AccessContext, clubId: string, name: string, season?: string) {
@@ -273,3 +277,4 @@ export * from "./notifications";
 export * from "./calendarFeed";
 export * from "./chat";
 export * from "./posts";
+export * from "./audit";
