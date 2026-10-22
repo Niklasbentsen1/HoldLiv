@@ -12,6 +12,7 @@ import {
   listMyNotifications,
   notifyUsers,
   recipientsOfPlayers,
+  sendUnansweredReminders,
   setEventCancelledNotifying,
   setNotificationPref,
   updateEventNotifying,
@@ -234,5 +235,51 @@ describe("aflysninger", () => {
     const list = await listMyNotifications(db, await ctxOf("sofie"));
     expect(list.length).toBeGreaterThan(0);
     expect(list[0].createdAt >= list[list.length - 1].createdAt).toBe(true);
+  });
+});
+
+describe("påmindelser om ubesvarede aktiviteter", () => {
+  const match = () => demo.events.u9Match;
+  const deadline = () => match().responseDeadline!;
+  const at = (hoursFromDeadline: number) => new Date(deadline().getTime() + hoursFromDeadline * 3600_000);
+  const matchMails = () => mails.filter((m) => m.subject.includes("Bryrup"));
+
+  it("venter, til der er et døgn til svarfristen", async () => {
+    await sendUnansweredReminders(db, deliver, at(-30));
+    expect(matchMails()).toEqual([]);
+  });
+
+  it("sender til dem, der mangler svar, og kun én gang", async () => {
+    const first = await sendUnansweredReminders(db, deliver, at(-20));
+    const toNiklas = matchMails().filter((m) => m.to === mailOf("niklas"));
+    expect(toNiklas).toHaveLength(1);
+    expect(toNiklas[0].subject).toMatch(/^Husk at svare: Kamp: Kamp mod Bryrup IF, U9 piger/);
+    expect(toNiklas[0].text).toContain("Emma");
+    expect(first.sent).toBe(matchMails().length + mails.filter((m) => !m.subject.includes("Bryrup")).length);
+    const count = mails.length;
+    await sendUnansweredReminders(db, deliver, at(-10));
+    expect(mails).toHaveLength(count);
+  });
+
+  it("holder op, når fristen er gået, og følger kanalvalget", async () => {
+    await sendUnansweredReminders(db, deliver, at(1));
+    expect(matchMails()).toEqual([]);
+    await setNotificationPref(db, await ctxOf("niklas"), "event_reminder", "mail", false);
+    await sendUnansweredReminders(db, deliver, at(-5));
+    expect(matchMails().map((m) => m.to)).not.toContain(mailOf("niklas"));
+  });
+
+  it("minder ikke om aflyste aktiviteter eller dem, man har svaret på", async () => {
+    await sql`delete from notifications`;
+    await setNotificationPref(db, await ctxOf("niklas"), "event_reminder", "mail", true);
+    await sql`update events set cancelled_at = now() where id = ${match().id}`;
+    await sendUnansweredReminders(db, deliver, at(-5));
+    expect(matchMails()).toEqual([]);
+    await sql`delete from notifications`;
+    await sql`update events set cancelled_at = null where id = ${match().id}`;
+    await sql`insert into event_responses (event_id, profile_id, status, responded_by_user_id)
+      select ${match().id}, p.id, 'yes', ${demo.users.niklas.user.id} from profiles p where p.first_name = 'Emma'`;
+    await sendUnansweredReminders(db, deliver, at(-5));
+    expect(matchMails().map((m) => m.to)).not.toContain(mailOf("niklas"));
   });
 });

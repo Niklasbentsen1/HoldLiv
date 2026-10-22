@@ -7,9 +7,9 @@
 //     mangler modtager, springes over, og det noteres i `notifications`.
 //   - En fejl hos mail- eller SMS-udbyderen får aldrig selve ændringen (fx en aflysning) til at fejle; den noteres.
 //   - dedupe_key sørger for, at den samme besked ikke sendes to gange til samme login på samme kanal.
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { events, guardianships, notificationPrefs, notifications, profiles, teamMembers, teams, users } from "../db/schema";
+import { eventResponses, events, guardianships, notificationPrefs, notifications, profiles, teamMembers, teams, users } from "../db/schema";
 import { isMinor, type AccessContext } from "../auth/permissions";
 import { CHANNELS, DEFAULT_ENABLED, KINDS, type Channel, type Kind } from "../lib/notify";
 import { normalizePhone, type SmsSender } from "../lib/sms";
@@ -267,4 +267,67 @@ export async function updateMyPhone(db: Db, ctx: AccessContext, phone: string) {
   if (value && !normalizePhone(value)) throw new Error("Skriv et dansk mobilnummer med 8 cifre.");
   await db.update(profiles).set({ phone: value || null }).where(eq(profiles.id, ctx.profileId));
   if (!value) await db.update(notificationPrefs).set({ enabled: false }).where(and(eq(notificationPrefs.userId, ctx.userId), eq(notificationPrefs.channel, "sms")));
+}
+
+// --- Påmindelser om ubesvarede aktiviteter ---
+
+const REMINDER_LEAD_MS = 24 * 3600 * 1000;
+
+/**
+ * Minder spillere og forældre om at svare på aktiviteter, de ikke har meldt til eller fra.
+ * En påmindelse er "moden" 24 timer før svarfristen (eller før starten, hvis der ingen frist er) og sendes
+ * højst én gang pr. aktivitet og login, også selv om funktionen køres hvert kvarter. Forældre med flere børn
+ * på samme aktivitet får én besked med alle børnenes navne.
+ */
+export async function sendUnansweredReminders(db: Db, deliver: Deliver, now = new Date()) {
+  const upcoming = await db
+    .select()
+    .from(events)
+    .where(and(isNull(events.cancelledAt), gt(events.startsAt, now)));
+  const due = upcoming.filter((e) => {
+    const closes = e.responseDeadline ?? e.startsAt;
+    return closes.getTime() > now.getTime() && closes.getTime() - REMINDER_LEAD_MS <= now.getTime();
+  });
+  const total = { events: 0, sent: 0, skipped: 0, failed: 0 };
+  for (const e of due) {
+    const [players, answered, [team]] = await Promise.all([
+      db
+        .select({ id: profiles.id, firstName: profiles.firstName })
+        .from(teamMembers)
+        .innerJoin(profiles, eq(profiles.id, teamMembers.profileId))
+        .where(and(eq(teamMembers.teamId, e.teamId), eq(teamMembers.role, "player"))),
+      db.select({ id: eventResponses.profileId }).from(eventResponses).where(eq(eventResponses.eventId, e.id)),
+      db.select({ name: teams.name }).from(teams).where(eq(teams.id, e.teamId)),
+    ]);
+    const answeredIds = new Set(answered.map((a) => a.id));
+    const missing = players.filter((p) => !answeredIds.has(p.id));
+    if (missing.length === 0) continue;
+
+    // Samler pr. login, hvem der mangler svar.
+    const byUser = new Map<string, { recipient: Recipient; names: string[] }>();
+    for (const p of missing) {
+      for (const r of await recipientsOfPlayers(db, [p.id], now)) {
+        const entry = byUser.get(r.userId) ?? { recipient: r, names: [] };
+        entry.names.push(p.firstName);
+        byUser.set(r.userId, entry);
+      }
+    }
+    total.events++;
+    const closes = e.responseDeadline ? `Svarfristen er ${when(e.responseDeadline)}.` : `Den er ${when(e.startsAt)}.`;
+    for (const { recipient, names } of byUser.values()) {
+      const who = names.join(" og ");
+      const r = await notifyUsers(db, deliver, [recipient], {
+        kind: "event_reminder",
+        subject: `Husk at svare: ${label(e)}, ${team.name}`,
+        body: `${team.name}: ${label(e)} mangler svar for ${who}. ${closes}\n\nSvar her: ${deliver.baseUrl}/aktivitet/${e.id}`,
+        sms: `HoldLiv ${team.name}: ${label(e)} mangler svar for ${who}. ${deliver.baseUrl}/aktivitet/${e.id}`,
+        eventId: e.id,
+        dedupeKey: `reminder:${e.id}`,
+      });
+      total.sent += r.sent;
+      total.skipped += r.skipped;
+      total.failed += r.failed;
+    }
+  }
+  return total;
 }
