@@ -1,7 +1,7 @@
 // Automatisk betaling med gemt kort. En betaler siger selv ja, når vedkommende betaler en opkrævning ("Husk kortet"), og foreningen
 // skal have tilladt det. Derefter trækkes forfaldne opkrævninger for betaleren og de børn, vedkommende er værge for, automatisk.
 // HoldLiv gemmer aldrig kortnummeret, kun udbyderens henvisninger. Pengene går direkte til foreningens egen Stripe-konto.
-import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { charges, clubs, guardianships, payments, profiles, savedCards, users } from "../db/schema";
 import { assertCan, type AccessContext } from "../auth/permissions";
@@ -65,6 +65,17 @@ export async function removeSavedCard(db: Db, ctx: AccessContext, cardId: string
   await logAudit(db, { action: "card.removed", clubId: card.clubId, actorUserId: ctx.userId });
 }
 
+function failedMessage(c: { chargeId: string; amountOre: number; description: string; clubName: string }, last: boolean, deliver: Deliver, attempt: number) {
+  return {
+    kind: "payment" as const,
+    subject: `Betalingen til ${c.clubName} kunne ikke gennemføres`,
+    body: `Vi kunne ikke trække ${kr(c.amountOre)} fra dit gemte kort til ${c.clubName}: ${c.description}.\n\n${last ? "Vi prøver ikke igen automatisk." : "Vi prøver igen i morgen."} Du kan betale selv her: ${deliver.baseUrl}/betaling`,
+    sms: `Betalingen til ${c.clubName} kunne ikke gennemføres. Betal selv i HoldLiv.`,
+    url: "/betaling",
+    dedupeKey: `autocharge:${c.chargeId}:fail:${attempt}`,
+  };
+}
+
 function paidMessage(c: { chargeId: string; amountOre: number; description: string; clubName: string; card: { last4: string | null } }, deliver: Deliver) {
   return {
     kind: "payment" as const,
@@ -74,6 +85,33 @@ function paidMessage(c: { chargeId: string; amountOre: number; description: stri
     url: "/betaling",
     dedupeKey: `autocharge:${c.chargeId}:ok`,
   };
+}
+
+async function eligibleCharges(db: Db, today: string, extra: SQL[]) {
+  return db
+    .select({
+      chargeId: charges.id,
+      clubId: charges.clubId,
+      profileId: charges.profileId,
+      amountOre: charges.amountOre,
+      description: charges.description,
+      account: clubs.stripeAccountId,
+      clubName: clubs.name,
+      card: savedCards,
+    })
+    .from(charges)
+    .innerJoin(profiles, eq(profiles.id, charges.profileId))
+    .innerJoin(clubs, and(eq(clubs.id, charges.clubId), eq(clubs.autoChargeEnabled, true)))
+    .innerJoin(
+      savedCards,
+      and(
+        eq(savedCards.clubId, charges.clubId),
+        isNull(savedCards.removedAt),
+        or(eq(savedCards.payerProfileId, charges.profileId), sql`${minorOn(today)} and exists (select 1 from ${guardianships} g where g.guardian_profile_id = ${savedCards.payerProfileId} and g.child_profile_id = ${charges.profileId})`),
+      ),
+    )
+    .where(and(eq(charges.status, "open"), sql`${charges.amountOre} > 0`, lte(charges.dueDate, today), ...extra))
+    .orderBy(asc(charges.dueDate));
 }
 
 async function payerRecipient(db: Db, payerProfileId: string) {
@@ -111,31 +149,36 @@ export async function markAutoPaid(db: Db, chargeId: string, paymentIntentId: st
 export async function runAutoCharges(db: Db, provider: PaymentProvider, deliver: Deliver, now = new Date()) {
   const today = localDate(now);
   const dayAgo = new Date(now.getTime() - 23 * 3_600_000);
-  const candidates = await db
-    .select({
-      chargeId: charges.id,
-      clubId: charges.clubId,
-      profileId: charges.profileId,
-      amountOre: charges.amountOre,
-      description: charges.description,
-      account: clubs.stripeAccountId,
-      clubName: clubs.name,
-      card: savedCards,
-    })
-    .from(charges)
-    .innerJoin(profiles, eq(profiles.id, charges.profileId))
-    .innerJoin(clubs, and(eq(clubs.id, charges.clubId), eq(clubs.autoChargeEnabled, true)))
-    .innerJoin(
-      savedCards,
-      and(
-        eq(savedCards.clubId, charges.clubId),
-        isNull(savedCards.removedAt),
-        or(eq(savedCards.payerProfileId, charges.profileId), sql`${minorOn(today)} and exists (select 1 from ${guardianships} g where g.guardian_profile_id = ${savedCards.payerProfileId} and g.child_profile_id = ${charges.profileId})`),
-      ),
-    )
-    .where(and(eq(charges.status, "open"), sql`${charges.amountOre} > 0`, lte(charges.dueDate, today), lt(charges.autoAttempts, MAX_AUTO_ATTEMPTS), or(isNull(charges.lastAutoAttemptAt), lt(charges.lastAutoAttemptAt, dayAgo))))
-    .orderBy(asc(charges.dueDate));
+  const [candidates, exhausted] = await Promise.all([
+    eligibleCharges(db, today, [lt(charges.autoAttempts, MAX_AUTO_ATTEMPTS), or(isNull(charges.lastAutoAttemptAt), lt(charges.lastAutoAttemptAt, dayAgo))!]),
+    // Opkrævninger, hvor alle forsøg er brugt, men det sidste var uklart: afgør dem nu.
+    eligibleCharges(db, today, [
+      sql`${charges.autoAttempts} >= ${MAX_AUTO_ATTEMPTS}`,
+      lt(charges.lastAutoAttemptAt, dayAgo),
+      sql`exists (select 1 from ${payments} x where x.charge_id = ${charges.id} and x.auto and x.status = 'pending')`,
+    ]),
+  ]);
   const result = { charged: 0, failed: 0, skipped: 0, unclear: 0 };
+  for (const c of exhausted) {
+    const pending = await db.select({ id: payments.id }).from(payments).where(and(eq(payments.chargeId, c.chargeId), eq(payments.auto, true), eq(payments.status, "pending")));
+    let found: string | null;
+    try {
+      found = await provider.findPaymentForCharge(c.chargeId, c.account);
+    } catch {
+      result.unclear++;
+      continue;
+    }
+    if (found) {
+      if (await markAutoPaid(db, c.chargeId, found, now)) {
+        result.charged++;
+        await notifyUsers(db, deliver, await payerRecipient(db, c.card.payerProfileId), paidMessage(c, deliver));
+      }
+      continue;
+    }
+    await db.update(payments).set({ status: "failed", completedAt: now, note: "Automatisk træk blev ikke gennemført (intet fundet hos udbyderen)" }).where(inArray(payments.id, pending.map((p) => p.id)));
+    result.failed++;
+    await notifyUsers(db, deliver, await payerRecipient(db, c.card.payerProfileId), failedMessage(c, true, deliver, MAX_AUTO_ATTEMPTS));
+  }
   for (const c of candidates) {
     // Tæl forsøget op først og kun, hvis rækken stadig er åben og ikke prøvet for nylig: så kan to kørsler ikke trække den samme.
     const claimed = await db
@@ -190,7 +233,11 @@ export async function runAutoCharges(db: Db, provider: PaymentProvider, deliver:
         const r = await tx.update(charges).set({ status: "paid", paidAt: now }).where(and(eq(charges.id, c.chargeId), eq(charges.status, "open"))).returning({ id: charges.id });
         return r.length > 0;
       });
-      if (!closed) {
+      // Lukket af webhooken (samme betaling) er stadig en succes; kun en anden gennemført betaling betyder, at der er betalt to gange.
+      const [other] = closed
+        ? []
+        : await db.select({ id: payments.id }).from(payments).where(and(eq(payments.chargeId, c.chargeId), eq(payments.status, "succeeded"), ne(payments.id, payment.id), or(isNull(payments.providerPaymentId), ne(payments.providerPaymentId, res.paymentIntentId))));
+      if (other) {
         // Betaleren nåede at betale selv imens: kortet er trukket én gang for meget, så beløbet gives tilbage med det samme.
         await provider.refund(res.paymentIntentId, c.account).catch((e) => console.error("Automatisk refusion mislykkedes", e));
         await db.update(payments).set({ status: "refunded", note: "Betalt to gange; automatisk refunderet" }).where(eq(payments.id, payment.id));
@@ -207,15 +254,7 @@ export async function runAutoCharges(db: Db, provider: PaymentProvider, deliver:
       // Fejlteksten fra udbyderen gemmes hos betalingen, men vises ikke for betaleren.
       await db.update(payments).set({ status: "failed", completedAt: now, note: `Automatisk træk mislykkedes: ${res.reason}`.slice(0, 500) }).where(eq(payments.id, payment.id));
       result.failed++;
-      const last = attempts >= MAX_AUTO_ATTEMPTS;
-      await notifyUsers(db, deliver, to, {
-        kind: "payment",
-        subject: `Betalingen til ${c.clubName} kunne ikke gennemføres`,
-        body: `Vi kunne ikke trække ${kr(c.amountOre)} fra dit gemte kort til ${c.clubName}: ${c.description}.\n\n${last ? "Vi prøver ikke igen automatisk." : "Vi prøver igen i morgen."} Du kan betale selv her: ${deliver.baseUrl}/betaling`,
-        sms: `Betalingen til ${c.clubName} kunne ikke gennemføres. Betal selv i HoldLiv.`,
-        url: "/betaling",
-        dedupeKey: `autocharge:${c.chargeId}:fail:${attempts}`,
-      });
+      await notifyUsers(db, deliver, to, failedMessage(c, attempts >= MAX_AUTO_ATTEMPTS, deliver, attempts));
     }
   }
   if (candidates.length) await logAudit(db, { action: "autocharge.run", detail: { ...result, day: addDays(today, 0) } });

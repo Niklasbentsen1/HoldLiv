@@ -14,14 +14,14 @@ export async function POST(req: NextRequest) {
   }
   const event = JSON.parse(payload) as {
     type: string;
-    data: { object: { id: string; payment_status?: string; payment_intent?: string | null; amount_total?: number | null; metadata?: { charge_id?: string } | null } };
+    data: { object: { id: string; payment_status?: string; payment_intent?: string | null; amount_total?: number | null; metadata?: { charge_id?: string; auto?: string } | null } };
   };
   // Asynkrone betalingsmetoder melder "paid" senere med async_payment_succeeded.
   const done =
     (event.type === "checkout.session.completed" && event.data.object.payment_status === "paid") ||
     event.type === "checkout.session.async_payment_succeeded";
   // Et automatisk træk, hvor vi ikke fik svar fra Stripe: her kommer svaret.
-  if (event.type === "payment_intent.succeeded" && event.data.object.metadata?.charge_id) {
+  if (event.type === "payment_intent.succeeded" && event.data.object.metadata?.auto === "1" && event.data.object.metadata.charge_id) {
     await markAutoPaid(db, event.data.object.metadata.charge_id, event.data.object.id);
   }
   if (done) {

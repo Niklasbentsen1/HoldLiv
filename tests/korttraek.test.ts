@@ -178,6 +178,7 @@ describe("voksne børn og uklare svar", () => {
       ...mockProvider,
       async chargeSavedCard(req) {
         await db.update(charges).set({ status: "paid", paidAt: day(70) }).where(eq(charges.id, req.chargeId));
+        await db.insert(payments).values({ chargeId: req.chargeId, provider: "mock", amountOre: 7_700, status: "succeeded", providerPaymentId: "pi_manual" });
         return { ok: true, paymentIntentId: "pi_race" };
       },
       async refund(paymentId) {
@@ -186,8 +187,49 @@ describe("voksne børn og uklare svar", () => {
     };
     await runAutoCharges(db, racing, deliver, day(70));
     expect(refunded).toBe("pi_race");
-    const [p] = await db.select().from(payments).where(eq(payments.chargeId, id));
-    expect(p.status).toBe("refunded");
+    const ps = await db.select().from(payments).where(eq(payments.chargeId, id));
+    expect(ps.map((p) => p.status).sort()).toEqual(["refunded", "succeeded"]);
+  });
+
+  it("webhooken kan nå frem før det synkrone svar uden at en gyldig betaling refunderes", async () => {
+    const id = await charge(payerProfile, 8_800);
+    const refunds: string[] = [];
+    const fast: PaymentProvider = {
+      ...mockProvider,
+      async chargeSavedCard(req) {
+        await markAutoPaid(db, req.chargeId, "pi_fast", day(90));
+        return { ok: true, paymentIntentId: "pi_fast" };
+      },
+      async refund(paymentId) {
+        refunds.push(paymentId);
+      },
+    };
+    sent.length = 0;
+    expect(await runAutoCharges(db, fast, deliver, day(90))).toMatchObject({ charged: 1, skipped: 0 });
+    expect(refunds).toEqual([]);
+    expect((await status(id)).status).toBe("paid");
+    expect((await db.select().from(payments).where(eq(payments.chargeId, id))).map((p) => p.status)).toEqual(["succeeded"]);
+    expect(sent.map((m) => m.subject)).toEqual(["Betalt: Kontingent"]);
+  });
+
+  it("når alle tre forsøg er uklare, afgøres de bagefter og betaleren får besked", async () => {
+    const id = await charge(payerProfile, 9_900);
+    const unclear: PaymentProvider = { ...mockProvider, async chargeSavedCard() { return { ok: false, reason: "timeout", uncertain: true }; } };
+    for (const d of [100, 101, 102]) await runAutoCharges(db, unclear, deliver, day(d));
+    expect(await status(id)).toMatchObject({ status: "open", autoAttempts: MAX_AUTO_ATTEMPTS });
+    sent.length = 0;
+    const late: PaymentProvider = { ...mockProvider, async findPaymentForCharge() { return "pi_late"; } };
+    expect(await runAutoCharges(db, late, deliver, day(104))).toMatchObject({ charged: 1 });
+    expect((await status(id)).status).toBe("paid");
+    expect(sent.map((m) => m.subject)).toEqual(["Betalt: Kontingent"]);
+
+    const id2 = await charge(payerProfile, 9_100);
+    for (const d of [110, 111, 112]) await runAutoCharges(db, unclear, deliver, day(d));
+    sent.length = 0;
+    expect(await runAutoCharges(db, mockProvider, deliver, day(114))).toMatchObject({ failed: 1, charged: 0 });
+    expect((await status(id2)).status).toBe("open");
+    expect(sent[0].subject).toContain("kunne ikke gennemføres");
+    expect(await runAutoCharges(db, mockProvider, deliver, day(115))).toMatchObject({ failed: 0, charged: 0 });
   });
 
   it("mail ved træk kan ikke slås fra", async () => {
@@ -204,12 +246,15 @@ describe("Stripe-udbyderen", () => {
   const req = { chargeId: "c1", attempt: 2, amountOre: 5000, description: "x", card: { customerId: "cus_1", paymentMethodId: "pm_1", brand: null, last4: null }, connectedAccountId: "acct_1" };
   it("sender en Idempotency-Key og regner kun et 4xx-svar for et sikkert nej", async () => {
     const headers: Record<string, string>[] = [];
+    const bodies: string[] = [];
     const respond = (status: number, body: object) => (async (_u: string, init: RequestInit) => {
       headers.push(init.headers as Record<string, string>);
+      bodies.push(decodeURIComponent(String(init.body)));
       return new Response(JSON.stringify(body), { status });
     }) as unknown as typeof fetch;
     expect(await stripeProvider("sk", respond(200, { id: "pi_1", status: "succeeded" })).chargeSavedCard(req)).toEqual({ ok: true, paymentIntentId: "pi_1" });
     expect(headers[0]["Idempotency-Key"]).toBe("autocharge-c1-2");
+    expect(bodies[0]).toContain("metadata[auto]=1");
     expect(await stripeProvider("sk", respond(402, { error: { message: "Kortet blev afvist" } })).chargeSavedCard(req)).toMatchObject({ ok: false, uncertain: false });
     expect(await stripeProvider("sk", respond(500, { error: { message: "Fejl" } })).chargeSavedCard(req)).toMatchObject({ ok: false, uncertain: true });
     const down = (async () => {

@@ -160,7 +160,7 @@ export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): Pay
             off_session: "true",
             confirm: "true",
             description: req.description,
-            metadata: { charge_id: req.chargeId },
+            metadata: { charge_id: req.chargeId, auto: "1" },
           },
           req.connectedAccountId,
           "POST",
