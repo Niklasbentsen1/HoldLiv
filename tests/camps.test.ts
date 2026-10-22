@@ -124,6 +124,45 @@ describe("søskenderabat", () => {
   });
 });
 
+describe("søskende på ventelisten", () => {
+  async function siblings() {
+    const parent = await member(`far${Math.random()}@camp.test`, "Far");
+    const kids = [];
+    for (const name of ["Alma", "Bent"]) {
+      const [k] = await db.insert(profiles).values({ firstName: name, lastName: "Test", birthDate: "2013-03-01" }).returning();
+      await db.insert(clubMemberships).values({ clubId, profileId: k.id });
+      await db.insert(guardianships).values({ guardianProfileId: parent.profile.id, childProfileId: k.id });
+      kids.push(k);
+    }
+    return { ctx: await ctxOf(parent.user.id), kids };
+  }
+  const amountOf = async (profileId: string) => (await db.select().from(charges).where(eq(charges.profileId, profileId)))[0]?.amountOre;
+
+  it("to søskende, der begge venter og rykker op, betaler ikke begge med rabat", async () => {
+    const c = await camp({ capacity: 1 });
+    const blocker = await member(`blok${Math.random()}@camp.test`, "Blok");
+    await signUpForCamp(db, blocker.ctx, c.id, blocker.profile.id);
+    const { ctx, kids } = await siblings();
+    expect((await signUpForCamp(db, ctx, c.id, kids[0].id)).status).toBe("waitlist");
+    expect((await signUpForCamp(db, ctx, c.id, kids[1].id)).status).toBe("waitlist");
+    await updateCamp(db, admin, c.id, { name: "Sommercamp", startsOn: "2026-07-06", endsOn: "2026-07-10", priceOre: 100_000, siblingDiscountPercent: 20, capacity: 3 });
+    expect([await amountOf(kids[0].id), await amountOf(kids[1].id)]).toEqual([100_000, 80_000]);
+  });
+
+  it("en søskende på ventelisten giver ikke rabat til den, der rykker op alene", async () => {
+    const c = await camp({ capacity: 1 });
+    const blocker = await member(`blok${Math.random()}@camp.test`, "Blok");
+    await signUpForCamp(db, blocker.ctx, c.id, blocker.profile.id);
+    const { ctx, kids } = await siblings();
+    await signUpForCamp(db, ctx, c.id, kids[0].id);
+    await signUpForCamp(db, ctx, c.id, kids[1].id);
+    const [sb] = await db.select().from(campSignups).where(eq(campSignups.profileId, blocker.profile.id));
+    await cancelCampSignup(db, blocker.ctx, sb.id);
+    expect(await amountOf(kids[0].id)).toBe(100_000);
+    expect(await amountOf(kids[1].id)).toBeUndefined();
+  });
+});
+
 describe("betalt, refusion og aflysning", () => {
   it("en betalt plads kan først afmeldes efter refusion, og en 0-krone camp er betalt med det samme", async () => {
     const c = await camp({ capacity: 5 });

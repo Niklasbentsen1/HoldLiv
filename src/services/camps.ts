@@ -7,7 +7,7 @@
 //     plads fri, rykker den første på ventelisten op, får en opkrævning og besked.
 //   - Pladsen bekræftes, når opkrævningen oprettes; den betales som alle andre opkrævninger under Betaling. Betales den ikke, kan
 //     foreningen afmelde personen, og pladsen går videre.
-//   - Søskenderabat: den første i en familie (fælles forælder) betaler fuld pris, de næste får foreningens procent. Rabatten regnes,
+//   - Søskenderabat: den første i en familie (fælles forælder) med en bekræftet plads betaler fuld pris, de næste får foreningens procent. Rabatten regnes,
 //     når pladsen bekræftes, og ændres ikke bagefter.
 //   - Afmelding af en betalt plads kræver, at kassereren har refunderet opkrævningen først.
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
@@ -107,7 +107,7 @@ async function spotCounts(db: Pick<Db, "select">, campId: string) {
   return { confirmed: n("confirmed"), waiting: n("waitlist") };
 }
 
-/** Søskende til personen (fælles forælder) med en aktiv tilmelding til campen. */
+/** Søskende til personen (fælles forælder) med en bekræftet plads på campen. Ventelisten tæller ikke med. */
 async function siblingsSignedUp(db: Pick<Db, "select">, campId: string, profileId: string) {
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
@@ -116,7 +116,7 @@ async function siblingsSignedUp(db: Pick<Db, "select">, campId: string, profileI
     .where(
       and(
         eq(campSignups.campId, campId),
-        ne(campSignups.status, "cancelled"),
+        eq(campSignups.status, "confirmed"),
         ne(campSignups.profileId, profileId),
         sql`${guardianships.guardianProfileId} in (select guardian_profile_id from guardianships where child_profile_id = ${profileId})`,
       ),

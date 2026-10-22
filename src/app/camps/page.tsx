@@ -49,7 +49,7 @@ export default async function Camps({ searchParams }: { searchParams: Promise<{ 
                     {p.self ? "Dig" : p.firstName}
                     {p.status && (
                       <span className="muted small block">
-                        {p.status === "confirmed" ? "Du har en plads. Betal under Betaling." : "Du står på ventelisten."}
+                        {p.status === "confirmed" ? `${p.self ? "Du har" : `${p.firstName} har`} en plads. Betal under Betaling (kort, du har gemt, trækkes automatisk, når opkrævningen forfalder).` : `${p.self ? "Du står" : `${p.firstName} står`} på ventelisten.`}
                         {p.discountPercent > 0 ? ` Søskenderabat ${p.discountPercent} %.` : ""}
                       </span>
                     )}
