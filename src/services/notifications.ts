@@ -1,4 +1,4 @@
-// Beskeder til forældre og spillere: mail og SMS (push kommer senere). Hvert login vælger selv kanaler pr. slags besked.
+// Beskeder til forældre og spillere: mail og SMS og push i browseren. Hvert login vælger selv kanaler pr. slags besked.
 //
 // Regler:
 //   - En besked går til de logins, der hører til holdets spillere: spillerens eget login og forældre til børn under 18 år.
@@ -9,11 +9,12 @@
 //   - dedupe_key sørger for, at den samme besked ikke sendes to gange til samme login på samme kanal.
 import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { eventResponses, events, guardianships, notificationPrefs, notifications, profiles, teamMembers, teams, users } from "../db/schema";
+import { eventResponses, events, guardianships, notificationPrefs, notifications, profiles, pushSubscriptions, teamMembers, teams, users } from "../db/schema";
 import { isMinor, type AccessContext } from "../auth/permissions";
 import { CHANNELS, DEFAULT_ENABLED, KINDS, type Channel, type Kind } from "../lib/notify";
 import { normalizePhone, type SmsSender } from "../lib/sms";
 import type { Mailer } from "../lib/mail";
+import { PushGoneError, type PushSender } from "../lib/push";
 import { TYPE_LABEL, shortDay, time, when } from "../lib/format";
 import { setEventCancelled, updateEvent } from "./calendar";
 import type { EventInput } from "./index";
@@ -22,6 +23,8 @@ export interface Deliver {
   mail: Mailer;
   /** Null, når der ikke er nogen SMS-udbyder. */
   sms: SmsSender | null;
+  /** Udeladt eller null, når push ikke er sat op. */
+  push?: PushSender | null;
   baseUrl: string;
 }
 
@@ -94,8 +97,10 @@ export interface Message {
   subject: string;
   /** Mailens tekst. Fodnoten med link til indstillinger lægges på af notifyUsers. */
   body: string;
-  /** Kort tekst til SMS. */
+  /** Kort tekst til SMS og push. */
   sms: string;
+  /** Hvor et tryk på push-beskeden fører hen (en sti på HoldLiv). */
+  url?: string;
   eventId?: string | null;
   /** Gør beskeden til én gang pr. login og kanal. */
   dedupeKey?: string | null;
@@ -107,12 +112,17 @@ export async function notifyUsers(db: Db, deliver: Deliver, recipients: Recipien
   const prefsRows = recipients.length
     ? await db.select().from(notificationPrefs).where(and(inArray(notificationPrefs.userId, recipients.map((r) => r.userId)), eq(notificationPrefs.kind, msg.kind)))
     : [];
+  const subs = recipients.length
+    ? await db.select().from(pushSubscriptions).where(inArray(pushSubscriptions.userId, recipients.map((r) => r.userId)))
+    : [];
   const footer = `\n\nVil du have beskeder på en anden måde? Ret det her: ${deliver.baseUrl}/indstillinger`;
 
   for (const r of recipients) {
     for (const channel of CHANNELS) {
       const enabled = prefsRows.find((p) => p.userId === r.userId && p.channel === channel)?.enabled ?? DEFAULT_ENABLED[channel];
       if (!enabled) continue;
+      const userSubs = channel === "push" ? subs.filter((x) => x.userId === r.userId) : [];
+      if (channel === "push" && userSubs.length === 0) continue; // ingen browsere at sende til, så ingen post
       const body = channel === "mail" ? msg.body + footer : msg.sms;
 
       const [row] = await db
@@ -127,6 +137,25 @@ export async function notifyUsers(db: Db, deliver: Deliver, recipients: Recipien
       try {
         if (channel === "mail") {
           await deliver.mail(r.email, msg.subject, body);
+        } else if (channel === "push") {
+          if (!deliver.push) {
+            status = "skipped";
+            error = "Push er ikke sat op";
+          } else {
+            const payload = JSON.stringify({ title: msg.subject, body: msg.sms, url: msg.url ?? "/" });
+            let delivered = 0;
+            let lastError: unknown = null;
+            for (const sub of userSubs) {
+              try {
+                await deliver.push({ endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth }, payload);
+                delivered++;
+              } catch (e) {
+                lastError = e;
+                if (e instanceof PushGoneError) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+              }
+            }
+            if (delivered === 0) throw lastError ?? new Error("Push fejlede");
+          }
         } else {
           const phone = r.phone ? normalizePhone(r.phone) : null;
           if (!deliver.sms) {
@@ -192,6 +221,7 @@ async function announceChange(db: Db, deliver: Deliver, ctx: AccessContext, befo
     body: `${team.name}: ${label(after)} er ændret.\n\n${lines.join("\n")}\n\nSe aktiviteten: ${deliver.baseUrl}/aktivitet/${after.id}`,
     sms: `HoldLiv ${team.name}: ${label(after)} ${sms.join(", ")}`,
     eventId: after.id,
+    url: `/aktivitet/${after.id}`,
   });
 }
 
@@ -244,6 +274,7 @@ export async function setEventCancelledNotifying(
           ? `HoldLiv ${team.name}: ${label(first)} ${shortDay(first.startsAt)} kl. ${time(first.startsAt)} er ${verb}`
           : `HoldLiv ${team.name}: ${upcoming.length} aktiviteter er ${verb}, fra ${shortDay(first.startsAt)}`,
       eventId: first.id,
+      url: upcoming.length === 1 ? `/aktivitet/${first.id}` : `/hold/${first.teamId}`,
     });
   } catch (e) {
     console.error("[notify] kunne ikke sende besked om aflysning", e);
@@ -292,7 +323,7 @@ export async function sendUnansweredReminders(db: Db, deliver: Deliver, now = ne
   for (const e of due) {
     const [players, answered, [team]] = await Promise.all([
       db
-        .select({ id: profiles.id, firstName: profiles.firstName })
+        .select({ id: profiles.id, firstName: profiles.firstName, userId: profiles.userId })
         .from(teamMembers)
         .innerJoin(profiles, eq(profiles.id, teamMembers.profileId))
         .where(and(eq(teamMembers.teamId, e.teamId), eq(teamMembers.role, "player"))),
@@ -308,11 +339,11 @@ export async function sendUnansweredReminders(db: Db, deliver: Deliver, now = ne
     for (const p of missing) {
       for (const r of await recipientsOfPlayers(db, [p.id], now)) {
         const entry = byUser.get(r.userId) ?? { recipient: r, names: [] };
-        entry.names.push(p.firstName);
+        entry.names.push(p.userId === r.userId ? "dig" : p.firstName);
         byUser.set(r.userId, entry);
       }
     }
-    total.events++;
+    let any = false;
     const closes = e.responseDeadline ? `Svarfristen er ${when(e.responseDeadline)}.` : `Den er ${when(e.startsAt)}.`;
     for (const { recipient, names } of byUser.values()) {
       const who = names.join(" og ");
@@ -322,12 +353,40 @@ export async function sendUnansweredReminders(db: Db, deliver: Deliver, now = ne
         body: `${team.name}: ${label(e)} mangler svar for ${who}. ${closes}\n\nSvar her: ${deliver.baseUrl}/aktivitet/${e.id}`,
         sms: `HoldLiv ${team.name}: ${label(e)} mangler svar for ${who}. ${deliver.baseUrl}/aktivitet/${e.id}`,
         eventId: e.id,
+        url: `/aktivitet/${e.id}`,
         dedupeKey: `reminder:${e.id}`,
       });
+      if (r.sent > 0) any = true;
       total.sent += r.sent;
       total.skipped += r.skipped;
       total.failed += r.failed;
     }
+    if (any) total.events++;
   }
   return total;
+}
+
+// --- Push-abonnementer ---
+
+export interface PushSubscriptionInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+/** Gemmer browserens abonnement på det loggede ind login. Samme browser kan skifte login, så endpoint overtages. */
+export async function savePushSubscription(db: Db, ctx: AccessContext, sub: PushSubscriptionInput) {
+  if (!/^https:\/\//.test(sub.endpoint) || !sub.p256dh || !sub.auth) throw new Error("Browseren sendte et ugyldigt push-abonnement.");
+  await db
+    .insert(pushSubscriptions)
+    .values({ userId: ctx.userId, ...sub })
+    .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { userId: ctx.userId, p256dh: sub.p256dh, auth: sub.auth } });
+}
+
+export async function removePushSubscription(db: Db, ctx: AccessContext, endpoint: string) {
+  await db.delete(pushSubscriptions).where(and(eq(pushSubscriptions.userId, ctx.userId), eq(pushSubscriptions.endpoint, endpoint)));
+}
+
+export async function countMyPushSubscriptions(db: Db, ctx: AccessContext) {
+  return (await db.select({ id: pushSubscriptions.id }).from(pushSubscriptions).where(eq(pushSubscriptions.userId, ctx.userId))).length;
 }

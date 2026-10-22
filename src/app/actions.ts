@@ -18,6 +18,8 @@ import {
   respondToEvent,
   rotateInviteCode,
   setEventCancelledNotifying,
+  removePushSubscription,
+  savePushSubscription,
   setNotificationPref,
   updateEventNotifying,
   updateMyPhone,
@@ -68,6 +70,7 @@ import { getPaymentProvider, mockPaymentsEnabled } from "../lib/payments";
 import { db } from "../lib/db";
 import { sendLoginMail, sendMail } from "../lib/mail";
 import { CHANNELS, KINDS } from "../lib/notify";
+import { getPushSender } from "../lib/push";
 import { getSmsSender } from "../lib/sms";
 import { endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
 import { parseLocalDateTime } from "../lib/time";
@@ -88,7 +91,7 @@ async function attempt(back: string, fn: () => Promise<unknown>) {
 }
 
 async function deliverFromEnv() {
-  return { mail: sendMail, sms: getSmsSender(), baseUrl: await origin() };
+  return { mail: sendMail, sms: getSmsSender(), push: getPushSender(), baseUrl: await origin() };
 }
 
 // --- Login ---
@@ -558,4 +561,16 @@ export async function saveNotificationPrefs(formData: FormData) {
     }
   });
   redirect("/indstillinger?gemt=1");
+}
+
+export async function subscribePush(sub: { endpoint: string; p256dh: string; auth: string }) {
+  const { ctx } = await requireSession();
+  await savePushSubscription(db, ctx, sub);
+  revalidatePath("/indstillinger");
+}
+
+export async function unsubscribePush(endpoint: string) {
+  const { ctx } = await requireSession();
+  await removePushSubscription(db, ctx, endpoint);
+  revalidatePath("/indstillinger");
 }
