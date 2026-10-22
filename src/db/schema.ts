@@ -19,6 +19,7 @@ import {
   uuid,
   index,
   boolean,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -313,4 +314,23 @@ export const payments = pgTable(
     refundedAt: timestamp("refunded_at", { withTimezone: true }),
   },
   (t) => [index("payments_charge_idx").on(t.chargeId)],
+);
+
+// --- Moduler pr. hold ---
+
+// Hvilke moduler et hold bruger. En række pr. hold og modul; enabled=false beholder
+// indstillingerne, hvis modulet slås til igen. Modulernes egne data ligger i egne tabeller.
+export const teamModules = pgTable(
+  "team_modules",
+  {
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    module: text("module").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    config: jsonb("config").$type<Record<string, number | boolean>>().notNull().default({}),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.module] })],
 );

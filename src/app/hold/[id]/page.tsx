@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { getTeam, listTeamEvents } from "../../../services";
+import { getTeam, listEnabledModules, listTeamEvents } from "../../../services";
 import { db } from "../../../lib/db";
 import { requireSession } from "../../../lib/session";
 import { shortDay, time, TYPE_LABEL } from "../../../lib/format";
@@ -17,6 +17,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
   const team = await getTeam(db, ctx, id);
   const to = new Date(ctx.now.getTime() + WEEKS_AHEAD * 7 * 86_400_000);
   const events = await listTeamEvents(db, ctx, id, ctx.now, to);
+  const modules = await listEnabledModules(db, ctx, id);
   const h = await headers();
   const origin = process.env.APP_URL ?? `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
   const playerCount = team.players.length;
@@ -29,6 +30,21 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
         {team.season ? ` · ${team.season}` : ""} · {playerCount} spillere
       </p>
       <ErrorBox message={fejl} />
+
+      {(team.canManage || modules.length > 0) && (
+        <div className="actions">
+          {modules.map((m) => (
+            <Link key={m.key} href={`/hold/${id}/${m.path}`} className="button">
+              {m.name}
+            </Link>
+          ))}
+          {team.canManage && (
+            <Link href={`/hold/${id}/moduler`} className="button">
+              Moduler
+            </Link>
+          )}
+        </div>
+      )}
 
       {team.canManage && (
         <div className="actions">

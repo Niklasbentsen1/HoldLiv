@@ -142,3 +142,13 @@ Miljøvariabler: `DATABASE_URL`, `RESEND_API_KEY` og `MAIL_FROM` (rigtige mails)
 - Forholdsmæssig pris ved indmeldelse midt i en periode, søskende-/familierabat og indmeldelsesgebyr.
 - Spærring af tilmelding ved restance, kvitteringer som PDF og bogføring/eksport til regnskab.
 - Modulmotoren pr. hold og AI-medlemsservice.
+
+## Moduler pr. hold
+
+Hvert hold har sine egne moduler (samkørsel, frugt og opgaver, bødekasse). Beskrivelsen ligger i `src/modules/registry.ts`, tilstanden i `team_modules`, og motoren i `src/services/modules.ts`.
+
+- **Foreningens admin** slår moduler til og fra pr. hold (eller for flere hold ad gangen) under Forening. **Trænere** stiller modulets indstillinger på holdets side under Moduler.
+- Et slukket modul er helt lukket: modulets funktioner kalder `requireModule()` først. Indstillinger og data bevares, hvis modulet slås fra og til igen.
+- Moduler har `available: false`, indtil de er bygget. Så kan de ses, men ikke slås til.
+- HoldLiv fastsætter aldrig beløb. Satser i et modul sættes af foreningens egen admin eller træner.
+- Et nyt modul: tilføj en række i registret, egne tabeller og en side under `/hold/[id]/<path>`, og kald `requireModule()` i modulets services.
