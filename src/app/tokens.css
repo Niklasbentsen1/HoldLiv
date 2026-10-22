@@ -1,0 +1,103 @@
+/*
+ * HoldLiv designtokens. Alle skærme bygger på disse variabler, så nye sider
+ * (fx medlemmer og kontingent) får samme udtryk ved kun at bruge dem.
+ *
+ * Udtryk: lyse flader med hvide, meget runde kort og én signaturfarve (--brand).
+ * Det vigtigste på hver skærm står i et kort med signaturfarven (.card.brand / .hero).
+ *
+ * Signaturfarven vælges med data-brand på <html> i src/app/layout.tsx:
+ * "violet" (standard), "lagune" eller "hindbaer". Alle lyse og mørke toninger
+ * udledes af --brand og --brand-2, så en ny farve kræver kun de to.
+ */
+:root {
+  /* Signaturfarve: violet */
+  --brand: #6246ea;
+  --brand-2: #9a7dff;
+
+  /* Flader */
+  --paper: #f4f4f1;
+  --surface: #ffffff;
+  --surface-2: #f3f3ef;
+  --text: #17181d;
+  --muted: #6b6e78;
+  --faint: #9a9da6;
+  --line: #e7e7e2;
+
+  /* Aktivitetstyper */
+  --training: #2f8fe0;
+  --training-soft: #e3f1fc;
+  --match: #f57c2c;
+  --match-soft: #fdeadb;
+  --other: #d9508f;
+  --other-soft: #fbe6ef;
+
+  /* Svar */
+  --yes: #1f9d5b;
+  --yes-soft: #dcf3e5;
+  --maybe: #df9612;
+  --maybe-soft: #fbefd3;
+  --no: #e4484d;
+  --no-soft: #fde3e3;
+
+  /* Form */
+  --r-xl: 32px;
+  --r-lg: 24px;
+  --r-md: 18px;
+  --r-sm: 12px;
+  --r-pill: 999px;
+  --shadow: 0 1px 2px rgb(23 24 29 / 4%), 0 10px 28px -16px rgb(23 24 29 / 14%);
+  --shadow-lift: 0 2px 4px rgb(23 24 29 / 5%), 0 22px 44px -20px rgb(23 24 29 / 26%);
+
+  /* Typografi */
+  --font: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Afstand */
+  --gap: 16px;
+  --pad: 22px;
+}
+
+/* Alternative signaturfarver */
+:root[data-brand="lagune"] { --brand: #0c9c95; --brand-2: #34c9b4; }
+:root[data-brand="hindbaer"] { --brand: #de3570; --brand-2: #ff7a93; }
+
+/* Udledt af signaturfarven. Bruges overalt i stedet for faste farver. */
+:root, :root[data-brand] {
+  --on-brand: #ffffff;
+  --brand-strong: color-mix(in srgb, var(--brand) 82%, #000);
+  --brand-soft: color-mix(in srgb, var(--brand) 10%, var(--surface));
+  --brand-soft-2: color-mix(in srgb, var(--brand) 28%, var(--surface));
+  --brand-ink: color-mix(in srgb, var(--brand) 72%, var(--text));
+
+  /* Fremhævet kort (næste aktivitet, login-billede) */
+  --feature-bg: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  --on-feature: #ffffff;
+  --on-feature-muted: rgb(255 255 255 / 78%);
+  --feature-2: rgb(255 255 255 / 16%);
+  --feature-3: rgb(255 255 255 / 26%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0f1013;
+    --surface: #191a1f;
+    --surface-2: #22242a;
+    --text: #eeefea;
+    --muted: #a0a3ac;
+    --faint: #6f7380;
+    --line: #2b2d34;
+    --training-soft: #17283a;
+    --match-soft: #36231a;
+    --other-soft: #35192a;
+    --yes-soft: #15301f;
+    --maybe-soft: #352a10;
+    --no-soft: #3a1b1c;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%);
+    --shadow-lift: 0 18px 40px -18px rgb(0 0 0 / 60%);
+  }
+  :root, :root[data-brand] {
+    --brand-soft: color-mix(in srgb, var(--brand) 20%, var(--surface));
+    --brand-soft-2: color-mix(in srgb, var(--brand) 40%, var(--surface));
+    --brand-ink: color-mix(in srgb, var(--brand) 45%, var(--text));
+  }
+}

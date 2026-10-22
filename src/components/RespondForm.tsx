@@ -1,5 +1,8 @@
 import { STATUSES, STATUS_LABEL } from "../lib/format";
 import { respond } from "../app/actions";
+import { Icon } from "./ui";
+
+const ICON = { yes: "check", maybe: null, no: "x" } as const;
 
 /** Kommer / Måske / Kommer ikke, med en valgfri besked til træneren. */
 export function RespondForm({
@@ -25,6 +28,7 @@ export function RespondForm({
       <div className="answers">
         {STATUSES.map((s) => (
           <button key={s} name="status" value={s} disabled={disabled} className={status === s ? `answer ${s} active` : "answer"}>
+            {ICON[s] && status === s && <Icon name={ICON[s]} size={16} />}
             {STATUS_LABEL[s]}
           </button>
         ))}

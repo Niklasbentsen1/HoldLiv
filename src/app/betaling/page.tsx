@@ -5,6 +5,7 @@ import { kr, localDate, longDate } from "../../lib/money";
 import { mockPaymentsEnabled } from "../../lib/payments";
 import { ErrorBox, Shell } from "../../components/Shell";
 import { ChargeTag } from "../../components/Kasse";
+import { PageHead } from "../../components/ui";
 import { pay } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +18,7 @@ export default async function Payments({ searchParams }: { searchParams: Promise
 
   return (
     <Shell ctx={ctx} active="/betaling">
-      <h1>Betaling</h1>
-      <p className="muted">Kontingent og andre opkrævninger fra foreningen{many ? " for dig og dine børn" : ""}.</p>
+      <PageHead title="Betaling" sub={`Kontingent og andre opkrævninger fra foreningen${many ? " for dig og dine børn" : ""}.`} />
       <ErrorBox message={fejl} />
 
       <h2>Skal betales</h2>

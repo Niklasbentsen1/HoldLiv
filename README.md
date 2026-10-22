@@ -88,6 +88,15 @@ Kassererens værktøj ligger under **Kasse** (`/kasse`), medlemmernes under **Be
 
 Stripe sættes op med `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET`. Webhooken oprettes i Stripe som Connect-webhook med hændelserne `checkout.session.completed` og `checkout.session.async_payment_succeeded`. Kassereren kobler foreningen til Stripe med knappen under Kasse.
 
+## Design
+
+- **Udtryk:** lyse flader med hvide, meget runde kort og én **signaturfarve** (`--brand`). Det vigtigste på hver skærm (fx næste aktivitet) står i et kort med signaturfarven som gradient. Skrift: Bricolage Grotesque (selvhostet via `@fontsource-variable`). Mørk tilstand følger systemet.
+- **Signaturfarve:** violet som standard. Skift med `BRAND` i `src/app/layout.tsx` (`"violet"`, `"lagune"` eller `"hindbaer"`). En ny farve kræver kun `--brand` og `--brand-2` i `tokens.css`; toninger udledes automatisk.
+- **Tokens** ligger i `src/app/tokens.css`: flader, signalfarve, farver pr. aktivitetstype og svar, radier, skygger. Nye skærme bruger kun disse variabler.
+- **Byggeklodser** i `src/components/ui.tsx`: `Icon`, `Avatar`, `AvatarStack`, `Crest` (holdets skjold), `Ring` (procent), `Bars`, `Stat` (talkort), `TypeBadge`, `DateTile`, `PageHead`, `Empty`, `Pitch` (banestreger som baggrund).
+- **Klasser** i `src/app/globals.css`: `.card` (evt. `.brand` i signaturfarven eller `.tint` lys toning), `.tiles` (3 talkort), `.dash`/`.team-layout` (indhold + sidekolonne), `.people` (personliste), `.badge`, `.pill`, `.meter`, `.seg`, knapper `.primary`/`.accent`/`.danger`.
+- **Menu:** `NAV` i `src/components/Shell.tsx`. Sidebjælke på computer, flydende fanelinje på mobil. Nye områder tilføjes som én linje dér.
+
 ## Kode
 
 - `src/db/schema.ts` – datamodellen. Migrationer i `drizzle/`.

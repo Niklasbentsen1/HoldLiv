@@ -4,6 +4,7 @@ import { db } from "../../../lib/db";
 import { requireSession } from "../../../lib/session";
 import { Shell, ErrorBox } from "../../../components/Shell";
 import Link from "next/link";
+import { Crest } from "../../../components/ui";
 import { joinTeam } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,8 @@ export default async function Join({ params, searchParams }: { params: Promise<{
 
   return (
     <Shell ctx={ctx}>
-      <section className="card stack">
+      <section className="card stack" style={{ maxWidth: 520, margin: "0 auto" }}>
+        <Crest name={team.name} size={56} />
         <p className="muted small">Invitation til</p>
         <h1 className="flush">{team.name}</h1>
         <p className="muted">

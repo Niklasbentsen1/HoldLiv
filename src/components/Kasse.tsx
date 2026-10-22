@@ -4,6 +4,7 @@ import type { AccessContext } from "../auth/permissions";
 import { listFinanceClubs } from "../services";
 import { db } from "../lib/db";
 import { Shell } from "./Shell";
+import { Crest, PageHead } from "./ui";
 
 const TABS = [
   { path: "", label: "Overblik" },
@@ -34,7 +35,7 @@ export function KasseShell({
   const q = `?klub=${club.id}`;
   return (
     <Shell ctx={ctx} active="/kasse">
-      <h1>Kasse · {club.name}</h1>
+      <PageHead kicker={<><Crest name={club.name} size={22} /> {club.name}</>} title="Kasse" />
       {clubs.length > 1 && (
         <p className="small">
           Andre foreninger:{" "}
@@ -47,9 +48,9 @@ export function KasseShell({
             ))}
         </p>
       )}
-      <nav className="subnav">
+      <nav className="seg subnav">
         {TABS.map((t) => (
-          <Link key={t.path} href={`/kasse${t.path}${q}`} className={t.path === tab ? "active" : undefined}>
+          <Link key={t.path} href={`/kasse${t.path}${q}`} className={t.path === tab ? "on" : undefined}>
             {t.label}
           </Link>
         ))}
