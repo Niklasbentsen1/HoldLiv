@@ -162,6 +162,13 @@
       "when": 1792693088330,
       "tag": "0022_kontingent_udvidet",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792694369865,
+      "tag": "0023_korttraek",
+      "breakpoints": true
     }
   ]
 }

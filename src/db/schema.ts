@@ -180,6 +180,8 @@ export const clubs = pgTable("clubs", {
   signupTerms: text("signup_terms"),
   // Efter så mange dages restance kan medlemmet ikke tilmelde sig nye hold. Null = ingen spærring.
   arrearsBlockDays: integer("arrears_block_days"),
+  // Foreningen tillader, at medlemmer gemmer et kort, så forfaldne opkrævninger trækkes automatisk.
+  autoChargeEnabled: boolean("auto_charge_enabled").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -386,6 +388,9 @@ export const charges = pgTable(
     paidAt: timestamp("paid_at", { withTimezone: true }),
     remindedAt: timestamp("reminded_at", { withTimezone: true }),
     reminderCount: integer("reminder_count").notNull().default(0),
+    // Automatisk træk fra gemt kort: antal forsøg og tidspunkt for det seneste.
+    autoAttempts: integer("auto_attempts").notNull().default(0),
+    lastAutoAttemptAt: timestamp("last_auto_attempt_at", { withTimezone: true }),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
@@ -412,6 +417,9 @@ export const payments = pgTable(
     providerPaymentId: text("provider_payment_id"),
     amountOre: integer("amount_ore").notNull(),
     status: paymentStatus("status").notNull().default("pending"),
+    // Betaleren har sagt ja til at gemme kortet (se saved_cards), og betalingen er trukket automatisk fra et gemt kort.
+    saveCard: boolean("save_card").notNull().default(false),
+    auto: boolean("auto").notNull().default(false),
     note: text("note"),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
@@ -829,4 +837,28 @@ export const profileMergeDismissals = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.profileId] })],
+);
+
+// Et kort, en betaler har gemt hos foreningens Stripe-konto til automatisk betaling. HoldLiv gemmer aldrig kortnummeret, kun
+// udbyderens henvisninger og de sidste fire cifre. Dækker betalerens egne opkrævninger og dem for børn, betaleren er værge for.
+export const savedCards = pgTable(
+  "saved_cards",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    payerProfileId: uuid("payer_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    provider: paymentProvider("provider").notNull(),
+    customerId: text("customer_id").notNull(),
+    paymentMethodId: text("payment_method_id").notNull(),
+    brand: text("brand"),
+    last4: text("last4"),
+    consentAt: timestamp("consent_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    removedAt: timestamp("removed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("saved_cards_active_unique").on(t.clubId, t.payerProfileId).where(sql`${t.removedAt} is null`)],
 );

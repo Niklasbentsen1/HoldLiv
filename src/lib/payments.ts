@@ -14,12 +14,29 @@ export interface CheckoutRequest {
   connectedAccountId: string | null;
   /** Appens adresse, fx https://holdliv.dk */
   baseUrl: string;
+  /** Betaleren har sagt ja til, at kortet gemmes og bruges til senere opkrævninger. */
+  saveCard?: boolean;
 }
+
+export interface SavedCardRef {
+  customerId: string;
+  paymentMethodId: string;
+  brand: string | null;
+  last4: string | null;
+}
+
+export type OffSessionResult = { ok: true; paymentIntentId: string } | { ok: false; reason: string };
 
 export interface PaymentProvider {
   name: "stripe" | "mock";
   createCheckout(req: CheckoutRequest): Promise<{ sessionId: string; url: string }>;
   refund(paymentId: string, connectedAccountId: string | null): Promise<void>;
+  /** Efter en betaling med saveCard: det gemte kort (kunde og betalingsmetode hos foreningens Stripe-konto). */
+  retrieveSavedCard(sessionId: string, connectedAccountId: string | null): Promise<SavedCardRef | null>;
+  /** Trækker et gemt kort uden at betaleren er til stede. Kort, der kræver 3-D Secure, afvises (betaleren betaler selv). */
+  chargeSavedCard(req: { chargeId: string; amountOre: number; description: string; card: SavedCardRef; connectedAccountId: string | null }): Promise<OffSessionResult>;
+  /** Fjerner et gemt kort hos udbyderen. */
+  removeCard(card: SavedCardRef, connectedAccountId: string | null): Promise<void>;
   /** Opretter foreningens Stripe-konto (første gang) og giver et link til Stripes onboarding. */
   connectAccount(existingAccountId: string | null, baseUrl: string): Promise<{ accountId: string; url: string }>;
 }
@@ -34,6 +51,16 @@ export const mockProvider: PaymentProvider = {
     return { sessionId, url: `${req.baseUrl}/betal/test/${sessionId}` };
   },
   async refund() {},
+  async retrieveSavedCard() {
+    const id = randomBytes(6).toString("hex");
+    return { customerId: `cus_test_${id}`, paymentMethodId: `pm_test_${id}`, brand: "visa", last4: "4242" };
+  },
+  // Et testkort, hvis betalingsmetode indeholder "fail", afvises. Alle andre trækkes uden penge.
+  async chargeSavedCard(req) {
+    if (req.card.paymentMethodId.includes("fail")) return { ok: false, reason: "Kortet blev afvist" };
+    return { ok: true, paymentIntentId: `pi_test_${randomBytes(8).toString("hex")}` };
+  },
+  async removeCard() {},
   async connectAccount(existing, baseUrl) {
     return { accountId: existing ?? `acct_test_${randomBytes(6).toString("hex")}`, url: `${baseUrl}/kasse?stripe=klar` };
   },
@@ -54,15 +81,16 @@ export function formEncode(params: Record<string, unknown>, prefix = ""): string
 }
 
 export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): PaymentProvider {
-  const call = async (path: string, params: Record<string, unknown>, account?: string | null) => {
-    const res = await fetchFn(`https://api.stripe.com/v1/${path}`, {
-      method: "POST",
+  const call = async (path: string, params: Record<string, unknown>, account?: string | null, method: "POST" | "GET" = "POST") => {
+    const query = method === "GET" && Object.keys(params).length ? `?${formEncode(params).join("&")}` : "";
+    const res = await fetchFn(`https://api.stripe.com/v1/${path}${query}`, {
+      method,
       headers: {
         Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+        ...(method === "POST" ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
         ...(account ? { "Stripe-Account": account } : {}),
       },
-      body: formEncode(params).join("&"),
+      body: method === "POST" ? formEncode(params).join("&") : undefined,
     });
     const body = (await res.json()) as Record<string, unknown> & { error?: { message?: string } };
     if (!res.ok) throw new Error(`Stripe: ${body.error?.message ?? res.status}`);
@@ -82,7 +110,8 @@ export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): Pay
           customer_email: req.customerEmail ?? undefined,
           client_reference_id: req.chargeId,
           metadata: { charge_id: req.chargeId },
-          payment_intent_data: { metadata: { charge_id: req.chargeId } },
+          payment_intent_data: { metadata: { charge_id: req.chargeId }, ...(req.saveCard ? { setup_future_usage: "off_session" } : {}) },
+          ...(req.saveCard ? { customer_creation: "always" } : {}),
           success_url: `${req.baseUrl}${successPath}?session={CHECKOUT_SESSION_ID}`,
           cancel_url: `${req.baseUrl}${cancelPath}`,
           locale: "da",
@@ -93,6 +122,39 @@ export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): Pay
     },
     async refund(paymentId, account) {
       await call("refunds", { payment_intent: paymentId }, account);
+    },
+    async retrieveSavedCard(sessionId, account) {
+      const s = (await call(`checkout/sessions/${encodeURIComponent(sessionId)}`, { expand: { 0: "payment_intent.payment_method" } }, account, "GET")) as {
+        customer?: string | null;
+        payment_intent?: { payment_method?: { id?: string; card?: { brand?: string; last4?: string } } | null } | null;
+      };
+      const pm = s.payment_intent?.payment_method;
+      if (!s.customer || !pm?.id) return null;
+      return { customerId: String(s.customer), paymentMethodId: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null };
+    },
+    async chargeSavedCard(req) {
+      try {
+        const pi = (await call(
+          "payment_intents",
+          {
+            amount: req.amountOre,
+            currency: "dkk",
+            customer: req.card.customerId,
+            payment_method: req.card.paymentMethodId,
+            off_session: "true",
+            confirm: "true",
+            description: req.description,
+            metadata: { charge_id: req.chargeId },
+          },
+          req.connectedAccountId,
+        )) as { id: string; status: string };
+        return pi.status === "succeeded" ? { ok: true, paymentIntentId: pi.id } : { ok: false, reason: `Betalingen blev ikke gennemført (${pi.status})` };
+      } catch (e) {
+        return { ok: false, reason: e instanceof Error ? e.message : "Betalingen blev ikke gennemført" };
+      }
+    },
+    async removeCard(card, account) {
+      await call(`payment_methods/${encodeURIComponent(card.paymentMethodId)}/detach`, {}, account);
     },
     async connectAccount(existing, baseUrl) {
       const accountId = existing ?? String((await call("accounts", { type: "standard", country: "DK" })).id);

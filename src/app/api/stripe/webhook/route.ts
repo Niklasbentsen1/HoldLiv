@@ -1,9 +1,9 @@
 // Stripe kalder denne adresse, når en betaling er gennemført. Opsæt den i Stripe som
 // Connect-webhook (hændelser fra foreningernes konti) med checkout.session.completed.
 import { NextResponse, type NextRequest } from "next/server";
-import { completeCheckout } from "../../../../services";
+import { completeCheckout, saveCardFromCheckout } from "../../../../services";
 import { db } from "../../../../lib/db";
-import { verifyStripeSignature } from "../../../../lib/payments";
+import { getPaymentProvider, verifyStripeSignature } from "../../../../lib/payments";
 
 export async function POST(req: NextRequest) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -28,6 +28,12 @@ export async function POST(req: NextRequest) {
       // Ukendte sessioner (fx fra en anden app på samme Stripe-konto) kvitteres, så Stripe ikke prøver igen.
       if (e instanceof Error && e.message === "Ukendt betaling") return NextResponse.json({ ignored: true });
       throw e;
+    }
+    // Et kort, der ikke kan gemmes, må ikke få Stripe til at gentage hele kaldet; betalingen er allerede registreret.
+    try {
+      await saveCardFromCheckout(db, getPaymentProvider(), s.id);
+    } catch (e) {
+      console.error("Kortet kunne ikke gemmes", e);
     }
   }
   return NextResponse.json({ received: true });
