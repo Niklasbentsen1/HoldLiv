@@ -54,6 +54,11 @@ import {
   completeCheckout,
   saveCardFromCheckout,
   removeSavedCard,
+  submitExpense,
+  cancelExpense,
+  decideExpense,
+  markExpensePaid,
+  setMileageRate,
   setAutoCharge,
   connectPayments,
   createFee,
@@ -945,4 +950,58 @@ export async function deletePostAction(formData: FormData) {
   const back = safeNext(str(formData, "back"));
   await attempt(back, () => deletePost(db, ctx, str(formData, "postId")));
   redirect(back);
+}
+
+// --- Udlæg og kørsel ---
+
+export async function submitExpenseAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/udlaeg", async () => {
+    const file = formData.get("receipt");
+    const receipt = file instanceof File && file.size > 0 ? { bytes: new Uint8Array(await file.arrayBuffer()) } : null;
+    const kind = str(formData, "kind") === "mileage" ? "mileage" : "expense";
+    await submitExpense(
+      db,
+      ctx,
+      str(formData, "clubId"),
+      {
+        kind,
+        description: str(formData, "description"),
+        spentOn: str(formData, "spentOn"),
+        teamId: opt(formData, "teamId"),
+        amountOre: kind === "expense" ? parseKr(str(formData, "amount")) : undefined,
+        km: kind === "mileage" ? Number(str(formData, "km").replace(",", ".")) : undefined,
+        receipt,
+      },
+      await deliverFromEnv(),
+    );
+  });
+  redirect("/udlaeg?sendt=1");
+}
+
+export async function cancelExpenseAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/udlaeg", () => cancelExpense(db, ctx, str(formData, "claimId")));
+  revalidatePath("/udlaeg");
+}
+
+export async function decideExpenseAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = kasse(formData, "/udlaeg");
+  await attempt(back, async () =>
+    decideExpense(db, ctx, str(formData, "claimId"), str(formData, "decision") === "approve" ? "approve" : "reject", opt(formData, "reason"), await deliverFromEnv()),
+  );
+  revalidatePath("/kasse/udlaeg");
+}
+
+export async function payExpenseAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/udlaeg"), async () => markExpensePaid(db, ctx, str(formData, "claimId"), opt(formData, "note"), await deliverFromEnv()));
+  revalidatePath("/kasse/udlaeg");
+}
+
+export async function saveMileageRate(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/udlaeg"), () => setMileageRate(db, ctx, str(formData, "clubId"), str(formData, "rate") === "" ? null : parseKr(str(formData, "rate"))));
+  revalidatePath("/kasse/udlaeg");
 }
