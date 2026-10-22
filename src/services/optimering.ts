@@ -159,16 +159,28 @@ export async function analyseClub(db: Db, ctx: AccessContext, clubId: string) {
   return { teams: profilesOut, suggestions };
 }
 
-/** Beder rådgiveren om en samlet anbefaling. Kun sammentalte tal og holdnavne forlader HoldLiv, aldrig personer. */
+/** Holdnavne er fritekst og kan indeholde personnavne, så de erstattes med "Hold 1…" før de sendes, og sættes ind igen i svaret. */
+export function anonymiseTeams(names: string[]) {
+  const order = names.map((name, i) => ({ name, alias: `Hold ${i + 1}` })).sort((a, b) => b.name.length - a.name.length);
+  const swap = (text: string, from: "name" | "alias", to: "name" | "alias") => order.reduce((acc, e) => (e[from] ? acc.split(e[from]).join(e[to]) : acc), text);
+  return {
+    alias: (name: string) => order.find((e) => e.name === name)!.alias,
+    out: (text: string) => swap(text, "name", "alias"),
+    back: (text: string) => swap(text, "alias", "name"),
+  };
+}
+
+/** Beder rådgiveren om en samlet anbefaling. Kun sammentalte tal og anonymiserede holdnavne forlader HoldLiv, aldrig personer. */
 export async function adviseClub(db: Db, ctx: AccessContext, clubId: string, advisor: Advisor) {
   const { teams: t, suggestions } = await analyseClub(db, ctx, clubId);
   const [club] = await db.select({ name: clubs.name }).from(clubs).where(eq(clubs.id, clubId));
+  const anon = anonymiseTeams(t.map((x) => x.name));
   const input: AdvisorInput = {
     club: club.name,
-    teams: t.map(({ teamId, ...rest }) => rest),
-    suggestions: suggestions.map(({ kind, title, detail }) => ({ kind, title, detail })),
+    teams: t.map(({ teamId, ...rest }) => ({ ...rest, name: anon.alias(rest.name) })),
+    suggestions: suggestions.map(({ kind, title, detail }) => ({ kind, title: anon.out(title), detail: anon.out(detail) })),
   };
-  const text = await advisor(input);
+  const text = anon.back(await advisor(input));
   await logAudit(db, { action: "ai.advice", clubId, actorUserId: ctx.userId });
   return text;
 }

@@ -119,8 +119,9 @@ describe("AI-rådgiver", () => {
     });
     expect(text).toContain("Opt IF har 5 hold");
     const sent = JSON.stringify(seen);
-    expect(sent).not.toMatch(/Barn\d|Test|formand@/);
-    expect(seen!.teams[0]).toEqual({ name: "A U9", capacity: 12, players: 12, waiting: 4, coaches: 1, ageMin: 9, ageMax: 9 });
+    expect(sent).not.toMatch(/Barn\d|Test|formand@|A U9|B U11/);
+    expect(JSON.stringify(seen!.suggestions)).toMatch(/Hold \d/);
+    expect(seen!.teams[0]).toEqual({ name: "Hold 1", capacity: 12, players: 12, waiting: 4, coaches: 1, ageMin: 9, ageMax: 9 });
     const log = await sql`select action from audit_log where action = 'ai.advice'`;
     expect(log).toHaveLength(1);
   });
