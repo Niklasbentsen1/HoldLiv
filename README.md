@@ -86,7 +86,7 @@ Kassererens værktøj ligger under **Kasse** (`/kasse`), medlemmernes under **Be
 - **Rykkere** på mail for forfaldne opkrævninger, til forældrene for børn under 18. Højst én pr. opkrævning om ugen.
 - **Testtilstand:** uden `STRIPE_SECRET_KEY` (under udvikling eller med `DEMO_LOGIN=1`) går betalingen til en testside i appen i stedet for Stripe. Der trækkes ingen penge.
 
-Stripe sættes op med `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET`. Webhooken oprettes i Stripe som Connect-webhook med hændelserne `checkout.session.completed` og `checkout.session.async_payment_succeeded`. Kassereren kobler foreningen til Stripe med knappen under Kasse.
+Stripe sættes op med `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET`. Webhooken oprettes i Stripe som Connect-webhook med hændelserne `checkout.session.completed`, `checkout.session.async_payment_succeeded` og `payment_intent.succeeded` (den sidste afgør automatiske kortbetalinger, hvor svaret udeblev). Automatisk betaling med gemt kort trækkes af `/api/cron/betalinger` (kald den fx hvert kvarter med `Authorization: Bearer $CRON_SECRET`); foreningen slår det til under Kasse, Kontingenter. Kassereren kobler foreningen til Stripe med knappen under Kasse.
 
 ## Design
 
