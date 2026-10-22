@@ -120,6 +120,13 @@
       "when": 1792689131769,
       "tag": "0016_mfa_forsog",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792689585755,
+      "tag": "0017_gdpr",
+      "breakpoints": true
     }
   ]
 }

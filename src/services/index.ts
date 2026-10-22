@@ -278,3 +278,4 @@ export * from "./calendarFeed";
 export * from "./chat";
 export * from "./posts";
 export * from "./audit";
+export * from "./gdpr";

@@ -123,8 +123,27 @@ export const profiles = pgTable(
     phone: text("phone"),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
+    // Sat, når personen er slettet (GDPR). Rækken bevares anonymiseret, så betalingshistorikken er hel.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [uniqueIndex("profiles_user_id_unique").on(t.userId)],
+);
+
+// Samtykker pr. person. For et barn er det værgen, der giver og trækker samtykket. Versionen er den tekst, der blev accepteret.
+export const consents = pgTable(
+  "consents",
+  {
+    id: id(),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    version: text("version").notNull(),
+    givenByUserId: uuid("given_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    givenAt: timestamp("given_at", { withTimezone: true }).notNull().defaultNow(),
+    withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("consents_active_unique").on(t.profileId, t.kind).where(sql`${t.withdrawnAt} is null`)],
 );
 
 // Forælder/værge -> barn. Værgen er en profil, så den samme person
@@ -272,9 +291,8 @@ export const eventResponses = pgTable(
     comment: text("comment"),
     // Hvornår svaret blev "kommer". Bevares, når man blot ændrer beskeden, så man ikke mister sin plads i køen.
     yesSince: timestamp("yes_since", { withTimezone: true }),
-    respondedByUserId: uuid("responded_by_user_id")
-      .notNull()
-      .references(() => users.id),
+    // Sættes til null, hvis den der svarede, sletter sin konto.
+    respondedByUserId: uuid("responded_by_user_id").references(() => users.id, { onDelete: "set null" }),
     respondedAt: timestamp("responded_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.eventId, t.profileId] })],

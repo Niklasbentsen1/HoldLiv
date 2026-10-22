@@ -35,6 +35,12 @@ export default async function Welcome({ searchParams }: { searchParams: Promise<
             Fødselsdato <span className="muted">(valgfri)</span>
             <input name="birthDate" type="date" />
           </label>
+          <label className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+            <input type="checkbox" name="privacy" required style={{ width: "auto", marginTop: 4 }} />
+            <span>
+              Jeg har læst og accepterer <a href="/privatliv" target="_blank" rel="noreferrer">privatlivspolitikken</a>.
+            </span>
+          </label>
           <button className="primary">Fortsæt</button>
         </form>
       </section>
