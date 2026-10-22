@@ -161,12 +161,18 @@ export async function analyseClub(db: Db, ctx: AccessContext, clubId: string) {
 
 /** Holdnavne er fritekst og kan indeholde personnavne, så de erstattes med "Hold 1…" før de sendes, og sættes ind igen i svaret. */
 export function anonymiseTeams(names: string[]) {
-  const order = names.map((name, i) => ({ name, alias: `Hold ${i + 1}` })).sort((a, b) => b.name.length - a.name.length);
-  const swap = (text: string, from: "name" | "alias", to: "name" | "alias") => order.reduce((acc, e) => (e[from] ? acc.split(e[from]).join(e[to]) : acc), text);
+  const entries = names.map((name, i) => ({ name, alias: `Hold ${i + 1}` }));
+  const longestFirst = [...entries].filter((e) => e.name).sort((a, b) => b.name.length - a.name.length);
+  const escape = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Hele ord: "A" må ikke ramme "A-team" eller "Aften".
+  const edge = (core: string) => new RegExp(`(?<![\\p{L}\\p{N}_-])(?:${core})(?![\\p{L}\\p{N}_-])`, "gu");
+  const nameRe = longestFirst.length ? edge(longestFirst.map((e) => escape(e.name)).join("|")) : null;
+  const aliasRe = edge("Hold (\\d+)");
+  const aliasOf = new Map(entries.map((e) => [e.name, e.alias]));
   return {
-    alias: (name: string) => order.find((e) => e.name === name)!.alias,
-    out: (text: string) => swap(text, "name", "alias"),
-    back: (text: string) => swap(text, "alias", "name"),
+    alias: (name: string) => aliasOf.get(name)!,
+    out: (text: string) => (nameRe ? text.replace(nameRe, (m) => aliasOf.get(m)!) : text),
+    back: (text: string) => text.replace(aliasRe, (m, n: string) => entries[Number(n) - 1]?.name ?? m),
   };
 }
 

@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { testDb } from "./db";
 import { loadAccessContext } from "../src/auth/context";
-import { registerUser, createClub, createTeam, analyseClub, adviseClub, groupByAge, MIN_NEW_TEAM } from "../src/services";
+import { registerUser, createClub, createTeam, analyseClub, adviseClub, anonymiseTeams, groupByAge, MIN_NEW_TEAM } from "../src/services";
 import { clubMemberships, events, profiles, teamMembers, teamWaitlist, teams } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 import { mockAdvisor, type AdvisorInput } from "../src/lib/advisor";
@@ -107,6 +107,21 @@ describe("holdforslag", () => {
     expect(order).toEqual([...order].sort((a, b) => ({ high: 0, medium: 1, low: 2 })[a] - ({ high: 0, medium: 1, low: 2 })[b]));
     const other = await registerUser(db, "fremmed@opt.test", { firstName: "Fre", lastName: "Mmed" });
     await expect(analyseClub(db, await loadAccessContext(db, other.user.id, now), clubId)).rejects.toThrow();
+  });
+});
+
+describe("anonymisering af holdnavne", () => {
+  const names = ["A", ...Array.from({ length: 10 }, (_, i) => `U${i + 9} piger`), "A-team"];
+  it("sætter navnene tilbage, også med 10 hold eller flere", () => {
+    const anon = anonymiseTeams(names);
+    const text = "Hold 1 og Hold 10 og Hold 12 er presset. Hold 13 findes ikke.";
+    expect(anon.back(text)).toBe("A og U17 piger og A-team er presset. Hold 13 findes ikke.");
+  });
+  it("erstatter kun hele navne, så et kort navn ikke rammer andre ord", () => {
+    const anon = anonymiseTeams(names);
+    expect(anon.out("Hæv A fra 10 til 12. A-team mangler en træner, og Aften er et ord. U9 piger venter.")).toBe(
+      "Hæv Hold 1 fra 10 til 12. Hold 12 mangler en træner, og Aften er et ord. Hold 2 venter.",
+    );
   });
 });
 
