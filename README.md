@@ -69,6 +69,14 @@ Hvert svar gemmer, hvilket login der trykkede (`responded_by_user_id`), så træ
 - **Hvem ser hvad:** alle på holdet ser hvem der kommer. Beskeder ("syg") og "svaret af Niklas" ser kun trænere/admins og spilleren selv eller forældrene. Forældrenes navne og telefon ser kun trænere/admins.
 - **Fremmøde** (`/hold/<id>/fremmoede`): spillere × aktiviteter for de seneste 4, 8 eller 12 uger og de næste 2, med fremmødeprocent og hvem der mangler at svare.
 
+## Design
+
+- **Udtryk:** lyst "papir" (`--paper`) med hvide, meget runde kort, ét mørkt fremhævet kort pr. skærm (fx næste aktivitet) og **volt** (`--volt`, sportsgul-grøn) som eneste signalfarve. Skrift: Bricolage Grotesque (selvhostet via `@fontsource-variable`). Mørk tilstand følger systemet.
+- **Tokens** ligger i `src/app/tokens.css`: flader, signalfarve, farver pr. aktivitetstype og svar, radier, skygger. Nye skærme bruger kun disse variabler.
+- **Byggeklodser** i `src/components/ui.tsx`: `Icon`, `Avatar`, `AvatarStack`, `Crest` (holdets skjold), `Ring` (procent), `Bars`, `Stat` (talkort), `TypeBadge`, `DateTile`, `PageHead`, `Empty`, `Pitch` (banestreger som baggrund).
+- **Klasser** i `src/app/globals.css`: `.card` (evt. `.ink` mørk eller `.volt`), `.tiles` (3 talkort), `.dash`/`.team-layout` (indhold + sidekolonne), `.people` (personliste), `.badge`, `.pill`, `.meter`, `.seg`, knapper `.primary`/`.accent`/`.danger`.
+- **Menu:** `NAV` i `src/components/Shell.tsx`. Sidebjælke på computer, flydende fanelinje på mobil. Nye områder tilføjes som én linje dér.
+
 ## Kode
 
 - `src/db/schema.ts` – datamodellen. Migrationer i `drizzle/`.

@@ -3,6 +3,7 @@ import { listAdminClubs } from "../../services";
 import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { Shell, ErrorBox } from "../../components/Shell";
+import { Crest, Icon, PageHead } from "../../components/ui";
 import { newTeam } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -18,20 +19,27 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
       <ErrorBox message={fejl} />
       {clubs.map((c) => (
         <section key={c.id}>
-          <h1>{c.name}</h1>
-          <h2>Hold</h2>
-          <ul className="teams">
+          <PageHead kicker={<><Crest name={c.name} size={22} /> Forening</>} title={c.name} sub={`${c.teams.length} hold`} />
+          <ul className="team-grid">
             {c.teams.map((t) => (
               <li key={t.id}>
-                <Link href={`/hold/${t.id}`} className="card team-link">
-                  <strong>{t.name}</strong>
-                  <span className="muted small">{t.season}</span>
-                  <span className="labels">{t.coaches.length ? `Træner: ${t.coaches.join(", ")}` : "Mangler træner"}</span>
+                <Link href={`/hold/${t.id}`} className="card team-card">
+                  <Crest name={t.name} size={44} />
+                  <span className="grow">
+                    <strong className="block">{t.name}</strong>
+                    <span className="labels">{t.season}</span>
+                    <span className={t.coaches.length ? "labels block" : "labels block cancelled-note"}>
+                      {t.coaches.length ? `Træner: ${t.coaches.join(", ")}` : "Mangler træner"}
+                    </span>
+                  </span>
+                  <span className="go">
+                    <Icon name="arrow" size={16} />
+                  </span>
                 </Link>
               </li>
             ))}
           </ul>
-          <details className="card">
+          <details className="card" style={{ marginTop: 16, maxWidth: 560 }}>
             <summary>Opret hold</summary>
             <form action={newTeam} className="stack">
               <input type="hidden" name="clubId" value={c.id} />

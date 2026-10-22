@@ -1,0 +1,83 @@
+/*
+ * HoldLiv designtokens. Alle skærme bygger på disse variabler, så nye sider
+ * (fx medlemmer og kontingent) får samme udtryk ved kun at bruge dem.
+ *
+ * Udtryk: lyst "papir" med hvide, meget runde kort, ét mørkt fremhævet kort pr. side
+ * og "volt" (sportsgul-grøn som på løbesko og tennisbolde) som eneste signalfarve.
+ */
+:root {
+  /* Flader */
+  --paper: #eceee7;
+  --surface: #ffffff;
+  --surface-2: #f5f6f1;
+  --ink: #15171c;
+  --ink-2: #23262e;
+  --ink-3: #343843;
+  --text: #15171c;
+  --muted: #6a6f79;
+  --faint: #9a9ea6;
+  --line: #e2e4dc;
+  --on-ink: #f3f4ef;
+  --on-ink-muted: #a3a7b0;
+
+  /* Signal */
+  --volt: #d6f74c;
+  --volt-strong: #c3ea1f;
+  --volt-ink: #1d2200;
+
+  /* Aktivitetstyper */
+  --training: #6f93ff;
+  --training-soft: #e6ecff;
+  --match: #ff7a45;
+  --match-soft: #ffe9df;
+  --other: #b08cff;
+  --other-soft: #f0e9ff;
+
+  /* Svar */
+  --yes: #1f9d5b;
+  --yes-soft: #dcf3e5;
+  --maybe: #e19a12;
+  --maybe-soft: #fbefd3;
+  --no: #e4484d;
+  --no-soft: #fde3e3;
+
+  /* Form */
+  --r-xl: 32px;
+  --r-lg: 24px;
+  --r-md: 18px;
+  --r-sm: 12px;
+  --r-pill: 999px;
+  --shadow: 0 1px 2px rgb(21 23 28 / 4%), 0 8px 24px -12px rgb(21 23 28 / 12%);
+  --shadow-lift: 0 2px 4px rgb(21 23 28 / 6%), 0 18px 40px -18px rgb(21 23 28 / 28%);
+
+  /* Typografi */
+  --font: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Afstand */
+  --gap: 16px;
+  --pad: 22px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e0f12;
+    --surface: #18191e;
+    --surface-2: #1f2127;
+    --ink: #22252d;
+    --ink-2: #2b2f38;
+    --ink-3: #3a3f4a;
+    --text: #eef0ea;
+    --muted: #a0a4ad;
+    --faint: #6f7480;
+    --line: #2a2c33;
+    --training-soft: #1d2440;
+    --match-soft: #3a2116;
+    --other-soft: #2a2140;
+    --yes-soft: #15301f;
+    --maybe-soft: #352a10;
+    --no-soft: #3a1b1c;
+    --shadow: 0 1px 2px rgb(0 0 0 / 30%);
+    --shadow-lift: 0 18px 40px -18px rgb(0 0 0 / 60%);
+  }
+}

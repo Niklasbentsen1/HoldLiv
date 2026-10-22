@@ -3,6 +3,7 @@ import { listFamily } from "../../services";
 import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { Shell, ErrorBox } from "../../components/Shell";
+import { Avatar, Crest, PageHead } from "../../components/ui";
 import { addChild, addGuardian } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -22,30 +23,31 @@ export default async function Family({ searchParams }: { searchParams: Promise<{
 
   return (
     <Shell active="/familie" admin={ctx.adminClubs.size > 0}>
-      <h1>Familie</h1>
-      <p className="muted">
-        Børn har ikke eget login. Du melder til og fra for dem, og du kan skifte til dem i kalenderen.
-      </p>
+      <PageHead title="Familie" sub="Børn har ikke eget login. Du melder til og fra for dem, og du kan skifte til dem på overblikket." />
       <ErrorBox message={fejl} />
+      <div className="team-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", marginBottom: 20 }}>
 
       {kids.map((k) => (
         <section key={k.id} className="card stack">
-          <div>
-            <strong>
-              {k.firstName} {k.lastName}
-            </strong>{" "}
-            <span className="muted">{age(k.birthDate, ctx.now)} år</span>
+          <div className="team-hero">
+            <Avatar name={`${k.firstName} ${k.lastName}`} size={56} />
+            <div>
+              <strong style={{ fontSize: 20 }}>
+                {k.firstName} {k.lastName}
+              </strong>
+              <div className="muted">{age(k.birthDate, ctx.now)} år</div>
+            </div>
           </div>
-          <div className="small">
+          <div className="stack" style={{ gap: 8 }}>
             {k.teams.length ? (
-              k.teams.map((t, i) => (
-                <span key={t.id}>
-                  {i > 0 && ", "}
-                  <Link href={`/hold/${t.id}`}>{t.name}</Link>
-                </span>
+              k.teams.map((t) => (
+                <Link key={t.id} href={`/hold/${t.id}`} className="team-card" style={{ padding: 10, background: "var(--surface-2)", borderRadius: "var(--r-md)" }}>
+                  <Crest name={t.name} size={28} />
+                  <strong className="grow" style={{ fontSize: 15 }}>{t.name}</strong>
+                </Link>
               ))
             ) : (
-              <span className="muted">Ikke på et hold endnu. Bed træneren om holdets invitationslink.</span>
+              <span className="muted small">Ikke på et hold endnu. Bed træneren om holdets invitationslink.</span>
             )}
           </div>
           <div className="small muted">
@@ -62,8 +64,9 @@ export default async function Family({ searchParams }: { searchParams: Promise<{
           </details>
         </section>
       ))}
+      </div>
 
-      <section className="card stack">
+      <section className="card stack" style={{ maxWidth: 560 }}>
         <h2 className="flush">Tilføj barn</h2>
         <form action={addChild} className="stack">
           <div className="row">

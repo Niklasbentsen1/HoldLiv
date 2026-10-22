@@ -3,8 +3,9 @@ import { headers } from "next/headers";
 import { getTeam, listTeamEvents } from "../../../services";
 import { db } from "../../../lib/db";
 import { requireSession } from "../../../lib/session";
-import { shortDay, time, TYPE_LABEL } from "../../../lib/format";
+import { shortDay, time } from "../../../lib/format";
 import { Shell, ErrorBox } from "../../../components/Shell";
+import { Avatar, AvatarStack, Crest, DateTile, Empty, Icon, PageHead, Stat, TYPE_ICON } from "../../../components/ui";
 import { addCoach, newInviteLink, removePlayer } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -21,113 +22,180 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
   const origin = process.env.APP_URL ?? `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
   const playerCount = team.players.length;
 
+  const next = events.find((e) => !e.cancelledAt);
+
   return (
     <Shell admin={ctx.adminClubs.size > 0}>
-      <h1>{team.name}</h1>
-      <p className="muted">
-        {team.clubName}
-        {team.season ? ` · ${team.season}` : ""} · {playerCount} spillere
-      </p>
+      <PageHead
+        back={{ href: "/", label: "Overblik" }}
+        title={
+          <span className="team-hero">
+            <Crest name={team.name} size={52} />
+            {team.name}
+          </span>
+        }
+        sub={`${team.clubName}${team.season ? ` · ${team.season}` : ""}`}
+        actions={
+          team.canManage && (
+            <>
+              <Link href={`/hold/${id}/fremmoede`} className="button">
+                <Icon name="chart" size={18} /> Fremmøde
+              </Link>
+              <Link href={`/hold/${id}/ny`} className="button accent">
+                <Icon name="plus" size={18} /> Ny aktivitet
+              </Link>
+            </>
+          )
+        }
+      />
       <ErrorBox message={fejl} />
 
-      {team.canManage && (
-        <div className="actions">
-          <Link href={`/hold/${id}/ny`} className="button primary">
-            Ny aktivitet
-          </Link>
-          <Link href={`/hold/${id}/fremmoede`} className="button">
-            Fremmøde
-          </Link>
-        </div>
-      )}
+      <div className="tiles" style={{ marginBottom: 20 }}>
+        <Stat label="Spillere" value={playerCount} icon="users" hint={<AvatarStack names={team.players.map((p) => `${p.firstName} ${p.lastName}`)} max={6} size={28} />} />
+        <Stat label="Aktiviteter" value={events.filter((e) => !e.cancelledAt).length} icon="calendar" hint={`de næste ${WEEKS_AHEAD} uger`} />
+        <Stat
+          label="Næste"
+          tone="ink"
+          icon={next ? TYPE_ICON[next.type] : "calendar"}
+          value={next ? <span style={{ fontSize: 30 }}>{time(next.startsAt)}</span> : "–"}
+          hint={next ? <span style={{ color: "var(--on-ink-muted)" }}>{shortDay(next.startsAt)} · {next.yes} kommer</span> : "Intet planlagt"}
+        />
+      </div>
 
-      <h2>Kalender</h2>
-      {events.length === 0 && <p className="muted">Ingen aktiviteter de næste {WEEKS_AHEAD} uger.</p>}
-      <ul className="events compact">
-        {events.map((e) => (
-          <li key={e.id}>
-            <Link href={`/aktivitet/${e.id}`} className={e.cancelledAt ? "card row-card cancelled" : "card row-card"}>
-              <span className="date">
-                <span>{shortDay(e.startsAt)}</span>
-                <strong>{time(e.startsAt)}</strong>
-              </span>
-              <span className="grow">
-                <span className={`tag ${e.type}`}>{TYPE_LABEL[e.type]}</span> {e.title}
-                {e.cancelledAt && <span className="cancelled-note"> · Aflyst</span>}
-                {e.location && <span className="muted small block">{e.location}</span>}
-              </span>
-              {!e.cancelledAt && (
-                <span className="counts" title={`${e.yes} kommer, ${e.maybe} måske, ${e.no} kommer ikke`}>
-                  <span className="yes">{e.yes}</span>
-                  <span className="maybe">{e.maybe}</span>
-                  <span className="no">{e.no}</span>
-                  <span className="none">{Math.max(0, playerCount - e.yes - e.maybe - e.no)}</span>
-                </span>
-              )}
-            </Link>
-          </li>
-        ))}
-      </ul>
-      {!!events.length && <p className="muted small legend">Grøn: kommer · gul: måske · rød: kommer ikke · grå: ikke svaret</p>}
-
-      <h2>Trænere</h2>
-      <ul className="people">
-        {team.coaches.map((c) => (
-          <li key={c.profileId}>
-            {c.firstName} {c.lastName}
-          </li>
-        ))}
-        {team.coaches.length === 0 && <li className="muted">Ingen træner endnu</li>}
-      </ul>
-      {team.canManageCoaches && (
-        <details>
-          <summary className="small">Tilføj træner</summary>
-          <form action={addCoach} className="inline">
-            <input type="hidden" name="teamId" value={id} />
-            <input type="email" name="email" required placeholder="Trænerens e-mail" />
-            <button>Tilføj</button>
-          </form>
-          <p className="muted small">Personen skal have logget ind i HoldLiv én gang.</p>
-        </details>
-      )}
-
-      <h2>Spillere</h2>
-      <ul className="people">
-        {team.players.map((p) => (
-          <li key={p.profileId}>
-            <span className="grow">
-              {p.firstName} {p.lastName}
-              {p.mine && <span className="muted"> (din)</span>}
-              {p.guardians.length > 0 && (
-                <span className="muted small block">
-                  {p.guardians.map((g) => `${g.firstName} ${g.lastName}${g.phone ? `, ${g.phone}` : ""}`).join(" · ")}
-                </span>
-              )}
-            </span>
-            {team.canManage && (
-              <form action={removePlayer}>
-                <input type="hidden" name="teamId" value={id} />
-                <input type="hidden" name="profileId" value={p.profileId} />
-                <button className="link small">Fjern</button>
-              </form>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      {team.inviteCode && (
-        <section className="card stack">
-          <strong>Invitér spillere og forældre</strong>
-          <p className="muted small">
-            Del linket i fx holdets Facebook- eller Messenger-gruppe. Forældre logger ind, vælger deres barn og er med på holdet.
-          </p>
-          <input readOnly value={`${origin}/join/${team.inviteCode}`} className="mono" />
-          <form action={newInviteLink}>
-            <input type="hidden" name="teamId" value={id} />
-            <button className="link small">Lav et nyt link (det gamle holder op med at virke)</button>
-          </form>
+      <div className="team-layout">
+        <section>
+          <div className="section-head">
+            <h2>Kalender</h2>
+          </div>
+          {events.length === 0 && <Empty>Ingen aktiviteter de næste {WEEKS_AHEAD} uger.</Empty>}
+          <ul className="events">
+            {events.map((e) => {
+              const none = Math.max(0, playerCount - e.yes - e.maybe - e.no);
+              const pct = (n: number) => `${playerCount ? (n / playerCount) * 100 : 0}%`;
+              return (
+                <li key={e.id}>
+                  <Link href={`/aktivitet/${e.id}`} className={e.cancelledAt ? "card row-card cancelled" : "card row-card"}>
+                    <DateTile date={e.startsAt} type={e.type} />
+                    <span className="grow" style={{ display: "grid", gap: 6 }}>
+                      <span>
+                        <span className={e.cancelledAt ? "t strike" : "t"}>{e.title}</span>
+                        <span className="muted small">
+                          {time(e.startsAt)}
+                          {e.location ? ` · ${e.location}` : ""}
+                          {e.cancelledAt && <span className="cancelled-note"> · Aflyst</span>}
+                        </span>
+                      </span>
+                      {!e.cancelledAt && (
+                        <span className="meter" title={`${e.yes} kommer, ${e.maybe} måske, ${e.no} kommer ikke, ${none} ikke svaret`}>
+                          <i className="yes" style={{ width: pct(e.yes) }} />
+                          <i className="maybe" style={{ width: pct(e.maybe) }} />
+                          <i className="no" style={{ width: pct(e.no) }} />
+                        </span>
+                      )}
+                    </span>
+                    {!e.cancelledAt && (
+                      <span className="counts">
+                        <span className="yes">{e.yes}</span>
+                        <span className="maybe">{e.maybe}</span>
+                        <span className="no">{e.no}</span>
+                        <span className="none">{none}</span>
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          {!!events.length && (
+            <p className="legend">
+              <span><i className="yes" />Kommer</span>
+              <span><i className="maybe" />Måske</span>
+              <span><i className="no" />Kommer ikke</span>
+              <span><i className="none" />Ikke svaret</span>
+            </p>
+          )}
         </section>
-      )}
+
+        <aside className="dash-side">
+          <section>
+            <div className="section-head">
+              <h2>Trænere</h2>
+            </div>
+            <ul className="people">
+              {team.coaches.map((c) => (
+                <li key={c.profileId}>
+                  <Avatar name={`${c.firstName} ${c.lastName}`} />
+                  <span className="name grow">
+                    {c.firstName} {c.lastName}
+                  </span>
+                  <span className="pill volt">Træner</span>
+                </li>
+              ))}
+              {team.coaches.length === 0 && <li className="muted">Ingen træner endnu</li>}
+            </ul>
+            {team.canManageCoaches && (
+              <details style={{ marginTop: 10 }}>
+                <summary>Tilføj træner</summary>
+                <form action={addCoach} className="inline">
+                  <input type="hidden" name="teamId" value={id} />
+                  <input type="email" name="email" required placeholder="Trænerens e-mail" />
+                  <button>Tilføj</button>
+                </form>
+                <p className="muted small" style={{ marginTop: 6 }}>Personen skal have logget ind i HoldLiv én gang.</p>
+              </details>
+            )}
+          </section>
+
+          <section>
+            <div className="section-head">
+              <h2>Spillere</h2>
+              <span className="pill">{playerCount}</span>
+            </div>
+            <ul className="people">
+              {team.players.map((p) => (
+                <li key={p.profileId}>
+                  <Avatar name={`${p.firstName} ${p.lastName}`} />
+                  <span className="grow">
+                    <span className="name">
+                      {p.firstName} {p.lastName}
+                    </span>
+                    {p.mine && <span className="muted"> (din)</span>}
+                    {p.guardians.length > 0 && (
+                      <span className="note">{p.guardians.map((g) => `${g.firstName} ${g.lastName}${g.phone ? `, ${g.phone}` : ""}`).join(" · ")}</span>
+                    )}
+                  </span>
+                  {team.canManage && (
+                    <form action={removePlayer}>
+                      <input type="hidden" name="teamId" value={id} />
+                      <input type="hidden" name="profileId" value={p.profileId} />
+                      <button className="link small">Fjern</button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {team.inviteCode && (
+            <section className="card volt invite">
+              <div className="stat-top">
+                <strong>Invitér spillere og forældre</strong>
+                <span className="icon-bubble">
+                  <Icon name="link" size={18} />
+                </span>
+              </div>
+              <p className="small">Del linket i fx holdets Facebook- eller Messenger-gruppe. Forældre logger ind, vælger deres barn og er med på holdet.</p>
+              <input readOnly value={`${origin}/join/${team.inviteCode}`} className="mono" style={{ background: "rgb(255 255 255 / 60%)", color: "var(--volt-ink)" }} />
+              <form action={newInviteLink}>
+                <input type="hidden" name="teamId" value={id} />
+                <button className="link small" style={{ color: "var(--volt-ink)" }}>
+                  Lav et nyt link (det gamle holder op med at virke)
+                </button>
+              </form>
+            </section>
+          )}
+        </aside>
+      </div>
     </Shell>
   );
 }

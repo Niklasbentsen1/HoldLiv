@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { getTeam } from "../../../../services";
 import { db } from "../../../../lib/db";
 import { requireSession } from "../../../../lib/session";
 import { Shell, ErrorBox } from "../../../../components/Shell";
+import { PageHead } from "../../../../components/ui";
 import { EventFields } from "../../../../components/EventFields";
 import { newEvent } from "../../../actions";
 
@@ -17,12 +17,9 @@ export default async function NewEvent({ params, searchParams }: { params: Promi
 
   return (
     <Shell admin={ctx.adminClubs.size > 0}>
-      <Link href={`/hold/${id}`} className="muted small">
-        ← {team.name}
-      </Link>
-      <h1>Ny aktivitet</h1>
+      <PageHead back={{ href: `/hold/${id}`, label: team.name }} title="Ny aktivitet" />
       <ErrorBox message={fejl} />
-      <form action={newEvent} className="card stack">
+      <form action={newEvent} className="card stack" style={{ maxWidth: 640 }}>
         <input type="hidden" name="teamId" value={id} />
         <EventFields />
         <label>

@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { getEventDetail } from "../../../../services";
 import { db } from "../../../../lib/db";
 import { requireSession } from "../../../../lib/session";
 import { Shell, ErrorBox } from "../../../../components/Shell";
+import { PageHead } from "../../../../components/ui";
 import { EventFields } from "../../../../components/EventFields";
 import { editEvent } from "../../../actions";
 
@@ -16,12 +16,9 @@ export default async function EditEvent({ params, searchParams }: { params: Prom
   if (!e.canManage) return <Shell>Kun holdets trænere kan rette aktiviteter.</Shell>;
   return (
     <Shell admin={ctx.adminClubs.size > 0}>
-      <Link href={`/aktivitet/${id}`} className="muted small">
-        ← {e.title}
-      </Link>
-      <h1>Ret aktivitet</h1>
+      <PageHead back={{ href: `/aktivitet/${id}`, label: e.title }} title="Ret aktivitet" />
       <ErrorBox message={fejl} />
-      <form action={editEvent} className="card stack">
+      <form action={editEvent} className="card stack" style={{ maxWidth: 640 }}>
         <input type="hidden" name="eventId" value={id} />
         <EventFields defaults={e} />
         {e.seriesId && <p className="muted small">Ændringen gælder kun denne dato, ikke resten af serien.</p>}
