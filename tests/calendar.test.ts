@@ -230,3 +230,16 @@ describe("familie og trænere via e-mail", () => {
     expect(ctx.coachTeams.has(demo.teams.u9.id)).toBe(true);
   });
 });
+
+describe("træneren registrerer fremmøde", () => {
+  it("bevarer forælderens besked", async () => {
+    const ali = await ctxOf("ali");
+    await respondToEvent(db, ali, demo.events.u9Match.id, demo.kids.noor.id, "maybe", "Måske syg");
+    await respondToEvent(db, await ctxOf("mette"), demo.events.u9Match.id, demo.kids.noor.id, "yes");
+    const detail = await getEventDetail(db, await ctxOf("mette"), demo.events.u9Match.id);
+    const noor = detail.players.find((p) => p.profileId === demo.kids.noor.id)!;
+    expect(noor.status).toBe("yes");
+    expect(noor.comment).toBe("Måske syg");
+    expect(noor.respondedBy).toBe("Mette");
+  });
+});

@@ -1,19 +1,70 @@
-// Demo-login: login'ets id gemmes i en cookie. Erstattes af rigtig login (fx MitID/magic link) senere.
+// Sessioner i cookies. Cookien indeholder en tilfældig nøgle; databasen kender kun dens hash.
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { loadAccessContext } from "../auth/context";
+import { createSession, deleteSession, resolveSession } from "../auth/login";
 import { canActAs } from "../auth/permissions";
 import { db } from "./db";
 
-export const USER_COOKIE = "holdliv_user";
+export const SESSION_COOKIE = "holdliv_session";
 export const ACTING_COOKIE = "holdliv_acting";
 
-export async function getSession() {
+const cookieOptions = (expires?: Date) => ({
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  expires,
+});
+
+export async function startSession(userId: string) {
+  const { token, expiresAt } = await createSession(db, userId);
   const jar = await cookies();
-  const userId = jar.get(USER_COOKIE)?.value;
+  jar.set(SESSION_COOKIE, token, cookieOptions(expiresAt));
+  jar.delete(ACTING_COOKIE);
+}
+
+export async function endSession() {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (token) await deleteSession(db, token);
+  jar.delete(SESSION_COOKIE);
+  jar.delete(ACTING_COOKIE);
+}
+
+export async function setActingProfile(profileId: string) {
+  (await cookies()).set(ACTING_COOKIE, profileId, cookieOptions());
+}
+
+/** Login'et bag cookien, eller null. */
+export async function getUserId() {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? resolveSession(db, token) : null;
+}
+
+/**
+ * Login, rettigheder og hvem man agerer som. null hvis man ikke er logget ind eller mangler en profil.
+ * actingProfileId er null, når man ser hele familien på én gang.
+ */
+export async function getSession() {
+  const userId = await getUserId();
   if (!userId) return null;
   const ctx = await loadAccessContext(db, userId).catch(() => null);
   if (!ctx) return null;
-  const wanted = jar.get(ACTING_COOKIE)?.value;
-  const actingProfileId = wanted && canActAs(ctx, wanted) ? wanted : ctx.profileId;
+  const wanted = (await cookies()).get(ACTING_COOKIE)?.value;
+  const actingProfileId = wanted && canActAs(ctx, wanted) ? wanted : null;
   return { ctx, actingProfileId };
+}
+
+/** Til sider der kræver login. Sender til login eller til "udfyld din profil". */
+export async function requireSession(next?: string) {
+  const session = await getSession();
+  if (session) return session;
+  if (await getUserId()) redirect(next ? `/velkommen?next=${encodeURIComponent(next)}` : "/velkommen");
+  redirect(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
+}
+
+/** Kun stier i appen, så et login-link ikke kan sende videre til en fremmed side. */
+export function safeNext(next: unknown): string {
+  return typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "/";
 }

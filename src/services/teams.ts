@@ -1,6 +1,6 @@
 // Hold, familie og forening: hvem er på hvilke hold, invitationslinks og børneprofiler.
 import { randomBytes } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { clubMemberships, clubs, guardianships, profiles, teamMembers, teams, users } from "../db/schema";
 import { assertCan, can, canActAs, type AccessContext } from "../auth/permissions";
@@ -208,17 +208,6 @@ export async function listAdminClubs(db: Db, ctx: AccessContext) {
         coaches: coachRows.filter((r) => r.teamId === t.id).map((r) => `${r.firstName} ${r.lastName}`),
       })),
   }));
-}
-
-/** Foreningens voksne medlemmer med login, til at vælge trænere blandt. */
-export async function listClubAdults(db: Db, ctx: AccessContext, clubId: string) {
-  assertCan(ctx, { action: "club.manage", clubId });
-  return db
-    .select({ profileId: profiles.id, firstName: profiles.firstName, lastName: profiles.lastName })
-    .from(clubMemberships)
-    .innerJoin(profiles, eq(profiles.id, clubMemberships.profileId))
-    .where(and(eq(clubMemberships.clubId, clubId), isNotNull(profiles.userId)))
-    .orderBy(asc(profiles.firstName));
 }
 
 /** Admin gør en person til træner via e-mail. Personen skal have logget ind i HoldLiv én gang. */

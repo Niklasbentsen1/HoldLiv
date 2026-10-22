@@ -1,6 +1,6 @@
 // Handlinger i HoldLiv. Hver funktion tjekker rettigheder via can()/assertCan()
 // før den rører databasen, så web, app og AI-værktøjer deler samme regler.
-import { and, asc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
 import type { Db } from "../db/client";
 import {
   clubMemberships,
@@ -175,19 +175,24 @@ export async function respondToEvent(
   eventId: string,
   profileId: string,
   status: "yes" | "no" | "maybe",
-  comment?: string,
+  /** undefined bevarer en tidligere besked, fx når træneren blot registrerer fremmøde. */
+  comment?: string | null,
 ) {
   const [event, profile] = await Promise.all([loadEventFacts(db, eventId), loadProfileFacts(db, profileId)]);
   assertCan(ctx, { action: "event.respond", event, profile });
   const values = { eventId, profileId, status, comment: comment ?? null, respondedByUserId: ctx.userId, respondedAt: new Date() };
+  const { comment: _, ...withoutComment } = values;
   await db
     .insert(eventResponses)
     .values(values)
-    .onConflictDoUpdate({ target: [eventResponses.eventId, eventResponses.profileId], set: values });
+    .onConflictDoUpdate({
+      target: [eventResponses.eventId, eventResponses.profileId],
+      set: comment === undefined ? withoutComment : values,
+    });
 }
 
 /** Kommende aktiviteter for den profil, man agerer som, med profilens svar. */
-export async function listUpcomingEvents(db: Db, ctx: AccessContext, actingProfileId: string, from = new Date()) {
+export async function listUpcomingEvents(db: Db, ctx: AccessContext, actingProfileId: string, from = new Date(), to?: Date) {
   assertCan(ctx, { action: "profile.actAs", profileId: actingProfileId });
   const myTeams = await db
     .selectDistinct({ teamId: teamMembers.teamId })
@@ -212,7 +217,13 @@ export async function listUpcomingEvents(db: Db, ctx: AccessContext, actingProfi
     .from(events)
     .innerJoin(teams, eq(teams.id, events.teamId))
     .leftJoin(eventResponses, and(eq(eventResponses.eventId, events.id), eq(eventResponses.profileId, actingProfileId)))
-    .where(and(inArray(events.teamId, myTeams.map((t) => t.teamId)), gte(events.startsAt, from)))
+    .where(
+      and(
+        inArray(events.teamId, myTeams.map((t) => t.teamId)),
+        gte(events.startsAt, from),
+        to ? lt(events.startsAt, to) : undefined,
+      ),
+    )
     .orderBy(asc(events.startsAt));
 }
 

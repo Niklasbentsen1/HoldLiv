@@ -152,7 +152,7 @@ export async function seedDemo(db: Db, now = new Date()) {
   for (const e of allEvents) {
     const roster = rosters.find((r) => r.teamId === e.teamId)!;
     const past = e.startsAt.getTime() < now.getTime();
-    const soon = e.startsAt.getTime() < now.getTime() + 8 * 86_400_000;
+    const soon = e.startsAt.getTime() < now.getTime() + 10 * 86_400_000;
     if (!past && !soon) continue;
     for (const profileId of roster.players) {
       const r = pick(`${e.startsAt.toISOString()}${profileId}`);
