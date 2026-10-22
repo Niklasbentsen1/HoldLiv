@@ -1,7 +1,7 @@
 // To-faktor for admin og kasserer. TOTP med nødkoder. En session for en konto med to-faktor er "afventende"
 // (sessions.mfa_pending), indtil koden er tastet; så giver den ingen adgang.
 import { randomBytes } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { clubRoles, profiles, recoveryCodes, sessions, users } from "../db/schema";
 import { logAudit } from "../services/audit";
@@ -9,6 +9,7 @@ import { matchStep, newSecret, openSecret, otpauthUri, sealSecret } from "../lib
 import { sha256 } from "./login";
 
 export const MAX_MFA_ATTEMPTS = 5;
+export const LOCK_MINUTES = 15;
 export const RECOVERY_CODE_COUNT = 8;
 
 export class MfaError extends Error {
@@ -67,7 +68,7 @@ const normRecovery = (c: string) => c.trim().toLowerCase().replace(/[^0-9a-f]/g,
 const recoveryHash = (userId: string, c: string) => sha256(`${userId}:${normRecovery(c)}`);
 
 /** Trin 2: bekræft med en kode fra appen. Returnerer nødkoderne, som kun vises denne ene gang. */
-export async function confirmTotpSetup(db: Db, userId: string, code: string, now = new Date()) {
+export async function confirmTotpSetup(db: Db, userId: string, code: string, now = new Date(), keepSessionToken?: string | null) {
   const [u] = await db.select().from(users).where(eq(users.id, userId));
   if (u.totpEnabledAt) throw new MfaError("To-faktor er allerede slået til.");
   if (!u.totpPendingSecret) throw new MfaError("Start opsætningen forfra.");
@@ -81,6 +82,8 @@ export async function confirmTotpSetup(db: Db, userId: string, code: string, now
       .where(eq(users.id, userId));
     await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, userId));
     await tx.insert(recoveryCodes).values(codes.map((c) => ({ userId, codeHash: recoveryHash(userId, c) })));
+    // Andre sessioner blev oprettet uden to-faktor: log dem ud, så kun den nuværende består.
+    await tx.delete(sessions).where(and(eq(sessions.userId, userId), keepSessionToken ? ne(sessions.id, sha256(keepSessionToken)) : undefined));
   });
   for (const clubId of await privilegedClubs(db, userId)) await logAudit(db, { action: "mfa.enabled", clubId, actorUserId: userId });
   return codes;
@@ -99,6 +102,29 @@ export async function disableTotp(db: Db, userId: string, code: string, now = ne
 async function checkSecondFactor(db: Db, userId: string, code: string, now: Date): Promise<"totp" | "recovery"> {
   const [u] = await db.select().from(users).where(eq(users.id, userId));
   if (!u?.totpSecret) throw new MfaError("To-faktor er ikke slået til.");
+  if (u.totpLockedUntil && u.totpLockedUntil > now) throw new MfaError(`For mange forkerte koder. Prøv igen om ${LOCK_MINUTES} minutter.`);
+  try {
+    const kind = await matchSecondFactor(db, u, code, now);
+    if (u.totpFailures > 0) await db.update(users).set({ totpFailures: 0, totpLockedUntil: null }).where(eq(users.id, userId));
+    return kind;
+  } catch (e) {
+    if (!(e instanceof MfaError)) throw e;
+    // Tæl forsøget (atomisk), og lås kontoens to-faktor en tid efter for mange.
+    const [{ failures }] = await db
+      .update(users)
+      .set({ totpFailures: sql`${users.totpFailures} + 1` })
+      .where(eq(users.id, userId))
+      .returning({ failures: users.totpFailures });
+    if (failures >= MAX_MFA_ATTEMPTS) {
+      await db.update(users).set({ totpFailures: 0, totpLockedUntil: new Date(now.getTime() + LOCK_MINUTES * 60_000) }).where(eq(users.id, userId));
+    }
+    throw e;
+  }
+}
+
+async function matchSecondFactor(db: Db, u: typeof users.$inferSelect, code: string, now: Date): Promise<"totp" | "recovery"> {
+  const userId = u.id;
+  if (!u.totpSecret) throw new MfaError("To-faktor er ikke slået til.");
   const step = matchStep(openSecret(u.totpSecret), code, now);
   if (step !== null) {
     // Samme kode må ikke bruges to gange (genafspilning): kun et nyere step tæller.
@@ -170,7 +196,7 @@ export async function isMfaPending(db: Db, sessionToken: string, now = new Date(
   const [s] = await db
     .select({ id: sessions.id })
     .from(sessions)
-    .where(and(eq(sessions.id, sha256(sessionToken)), eq(sessions.mfaPending, true), sql`${sessions.expiresAt} > ${now}`));
+    .where(and(eq(sessions.id, sha256(sessionToken)), eq(sessions.mfaPending, true), gt(sessions.expiresAt, now)));
   return !!s;
 }
 

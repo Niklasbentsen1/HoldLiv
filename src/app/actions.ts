@@ -157,7 +157,7 @@ async function mfaStep(fn: (userId: string) => Promise<MfaState>): Promise<MfaSt
 
 export const beginMfaAction = async (): Promise<MfaState> => mfaStep(async (u) => beginTotpSetup(db, u));
 export const confirmMfaAction = async (_: MfaState, formData: FormData): Promise<MfaState> =>
-  mfaStep(async (u) => ({ codes: await confirmTotpSetup(db, u, str(formData, "code")), done: true }));
+  mfaStep(async (u) => ({ codes: await confirmTotpSetup(db, u, str(formData, "code"), new Date(), await currentSessionToken()), done: true }));
 export const disableMfaAction = async (_: MfaState, formData: FormData): Promise<MfaState> =>
   mfaStep(async (u) => {
     await disableTotp(db, u, str(formData, "code"));

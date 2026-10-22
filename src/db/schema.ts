@@ -41,6 +41,9 @@ export const users = pgTable("users", {
   totpPendingSecret: text("totp_pending_secret"),
   totpEnabledAt: timestamp("totp_enabled_at", { withTimezone: true }),
   totpLastStep: integer("totp_last_step"),
+  // Loft over forkerte koder pr. konto, uanset hvilken session der gætter.
+  totpFailures: integer("totp_failures").notNull().default(0),
+  totpLockedUntil: timestamp("totp_locked_until", { withTimezone: true }),
   createdAt: createdAt(),
 });
 

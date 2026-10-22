@@ -7,6 +7,9 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'holdliv_app') THEN CREATE ROLE holdliv_app NOLOGIN; END IF;
 END $$;
 --> statement-breakpoint
+-- Appens databasebruger skal være medlem af rollen for at kunne SET ROLE (ved hosting: GRANT holdliv_app TO <app-bruger>).
+GRANT holdliv_app TO CURRENT_USER;
+--> statement-breakpoint
 GRANT USAGE ON SCHEMA public TO holdliv_app;
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO holdliv_app;
@@ -20,13 +23,17 @@ CREATE FUNCTION app_user_id() RETURNS uuid LANGUAGE sql STABLE AS $$
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app_visible_clubs() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT coalesce(array_agg(DISTINCT cm.club_id), '{}')
-  FROM club_memberships cm
-  WHERE app_user_id() IS NOT NULL AND cm.profile_id IN (
+  WITH me AS (
     SELECT p.id FROM profiles p WHERE p.user_id = app_user_id()
     UNION
     SELECT g.child_profile_id FROM guardianships g JOIN profiles gp ON gp.id = g.guardian_profile_id WHERE gp.user_id = app_user_id()
   )
+  SELECT coalesce(array_agg(DISTINCT c.club_id), '{}') FROM (
+    SELECT cm.club_id FROM club_memberships cm WHERE app_user_id() IS NOT NULL AND cm.profile_id IN (SELECT id FROM me)
+    UNION
+    -- Admin og kasserer ser deres forening, også uden et medlemskab.
+    SELECT cr.club_id FROM club_roles cr JOIN profiles p ON p.id = cr.profile_id WHERE app_user_id() IS NOT NULL AND p.user_id = app_user_id()
+  ) c
 $$;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app_user_id(), app_visible_clubs() TO holdliv_app;
@@ -65,7 +72,7 @@ CREATE POLICY club_isolation ON clubs TO holdliv_app USING (id = ANY (((SELECT a
 --> statement-breakpoint
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY club_isolation ON audit_log TO holdliv_app USING (club_id = ANY (((SELECT app_visible_clubs()))::uuid[])) WITH CHECK (club_id = ANY (((SELECT app_visible_clubs()))::uuid[]));
+CREATE POLICY club_isolation ON audit_log TO holdliv_app USING (club_id = ANY (((SELECT app_visible_clubs()))::uuid[])) WITH CHECK (club_id IS NULL OR club_id = ANY (((SELECT app_visible_clubs()))::uuid[]));
 --> statement-breakpoint
 ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint

@@ -5,7 +5,7 @@ import { testDb } from "./db";
 import { seedDemo } from "../src/db/demo";
 import { loadAccessContext } from "../src/auth/context";
 import { createSession, resolveSession } from "../src/auth/login";
-import { beginTotpSetup, completeMfa, confirmTotpSetup, disableTotp, MAX_MFA_ATTEMPTS, mfaStatus, regenerateRecoveryCodes } from "../src/auth/mfa";
+import { beginTotpSetup, completeMfa, isMfaPending, LOCK_MINUTES, confirmTotpSetup, disableTotp, MAX_MFA_ATTEMPTS, mfaStatus, regenerateRecoveryCodes } from "../src/auth/mfa";
 import { base32Decode, base32Encode, codeAt, matchStep, openSecret, sealSecret, stepOf } from "../src/lib/totp";
 import { users } from "../src/db/schema";
 import { grantClubAdmin, listAudit, membersCsv, registerUser, addClubMember } from "../src/services";
@@ -71,16 +71,21 @@ describe("to-faktor ved login", () => {
     expect(codes).toHaveLength(8);
     expect(await mfaStatus(db, userId)).toMatchObject({ enabled: true, recoveryLeft: 8, privileged: true });
 
+    // Andre sessioner fra før to-faktor blev slået til er logget ud.
+    expect(await resolveSession(db, plain.token, t0)).toBeNull();
+
     // Nu er en ny session afventende og giver ingen adgang.
     const s = await createSession(db, userId, t0);
     expect(s.mfaPending).toBe(true);
     expect(await resolveSession(db, s.token, t0)).toBeNull();
+    expect(await isMfaPending(db, s.token, t0)).toBe(true);
     await expect(completeMfa(db, s.token, "123456", at(60))).rejects.toThrow(/Forkert/);
     expect(await resolveSession(db, s.token, at(60))).toBeNull();
     // Koden fra opsætningen kan ikke bruges igen (genafspilning).
     await expect(completeMfa(db, s.token, codeAt(secret, stepOf(t0)), t0)).rejects.toThrow(/allerede brugt/);
     await completeMfa(db, s.token, codeAt(secret, stepOf(at(60))), at(60));
     expect(await resolveSession(db, s.token, at(60))).toBe(userId);
+    expect(await isMfaPending(db, s.token, at(60))).toBe(false);
 
     // Nødkode virker én gang.
     const s2 = await createSession(db, userId, at(120));
@@ -106,6 +111,7 @@ describe("to-faktor ved login", () => {
 
   it("kan slås fra, medmindre det er påkrævet", async () => {
     const userId = demo.users.karen.user.id;
+    await sql`update users set totp_failures = 0, totp_locked_until = null where id = ${userId}`;
     const [u] = await db.select().from(users).where(eq(users.id, userId));
     const secret = openSecret(u.totpSecret!);
     process.env.REQUIRE_2FA = "1";
@@ -117,6 +123,22 @@ describe("to-faktor ved login", () => {
     await disableTotp(db, userId, codeAt(secret, stepOf(at(600))), at(600));
     expect((await mfaStatus(db, userId)).enabled).toBe(false);
     expect((await createSession(db, userId, at(700))).mfaPending).toBe(false);
+  });
+});
+
+describe("loft over forsøg pr. konto", () => {
+  it("låser to-faktor efter for mange forkerte koder, også ved slå fra og nye nødkoder", async () => {
+    const userId = demo.users.henrik.user.id;
+    const { secret } = await beginTotpSetup(db, userId);
+    await confirmTotpSetup(db, userId, codeAt(secret, stepOf(at(1000))), at(1000));
+    for (let i = 0; i < MAX_MFA_ATTEMPTS; i++) await expect(regenerateRecoveryCodes(db, userId, "111111", at(1010))).rejects.toThrow(/Forkert/);
+    // Nu er kontoen låst, selv med den rigtige kode.
+    const good = codeAt(secret, stepOf(at(1020)));
+    await expect(regenerateRecoveryCodes(db, userId, good, at(1020))).rejects.toThrow(/For mange/);
+    await expect(disableTotp(db, userId, good, at(1020))).rejects.toThrow(/For mange/);
+    // Efter låsetiden virker den rigtige kode igen.
+    const later = at(1020 + LOCK_MINUTES * 60 + 60);
+    await regenerateRecoveryCodes(db, userId, codeAt(secret, stepOf(later)), later);
   });
 });
 

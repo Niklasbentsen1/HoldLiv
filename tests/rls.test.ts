@@ -5,7 +5,7 @@ import { testDb } from "./db";
 import { seedDemo } from "../src/db/demo";
 import { loadAccessContext } from "../src/auth/context";
 import { withUserScope } from "../src/db/scope";
-import { auditLog, charges, clubMemberships, clubs, events, posts, profiles, teams } from "../src/db/schema";
+import { clubRoles, auditLog, charges, clubMemberships, clubs, events, posts, profiles, teams } from "../src/db/schema";
 import { createClub, createTeam, createEvent, registerUser, createPost, logAudit, listFeed } from "../src/services";
 
 const { db, sql, reset } = testDb();
@@ -83,6 +83,17 @@ describe("row-level security", () => {
       const feed = await listFeed(tx as never, sofie, "news");
       expect(Array.isArray(feed)).toBe(true);
     });
+  });
+
+  it("en admin uden medlemskab ser stadig sin forening, og login uden forening kan logges", async () => {
+    const u = await registerUser(db, "rolle-uden-medlem@holdliv.test", { firstName: "Rolle", lastName: "Uden" });
+    await db.insert(clubRoles).values({ clubId: demo.club.id, profileId: u.profile.id, role: "treasurer" });
+    await withUserScope(db, u.user.id, async (tx) => {
+      expect((await tx.select().from(clubs)).map((c) => c.id)).toEqual([demo.club.id]);
+      await logAudit(tx as never, { action: "login.ok", actorUserId: u.user.id });
+    });
+    const rows = await db.select().from(auditLog).where(dsql`action = 'login.ok' and club_id is null`);
+    expect(rows).toHaveLength(1);
   });
 
   it("revisionsloggen kan ikke ændres eller slettes af appen", async () => {
