@@ -545,3 +545,62 @@ export const calendarFeeds = pgTable("calendar_feeds", {
   token: text("token").notNull().unique(),
   createdAt: createdAt(),
 });
+
+// --- Holdchat ---
+// Grupperne (hele holdet, trænere, trænere + forældre) er automatiske: hvem der er med, regnes ud fra holdets
+// trænere, spillere og forældre hver gang, så ingen skal tilføjes eller fjernes. Aktiviteter har deres egen chat.
+
+export const chatKind = pgEnum("chat_kind", ["all", "coaches", "coaches_parents", "event"]);
+
+export const chatThreads = pgTable(
+  "chat_threads",
+  {
+    id: id(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    kind: chatKind("kind").notNull(),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("chat_threads_team_kind_unique").on(t.teamId, t.kind).where(sql`${t.kind} <> 'event'`),
+    uniqueIndex("chat_threads_event_unique").on(t.eventId).where(sql`${t.eventId} is not null`),
+  ],
+);
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: id(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => chatThreads.id, { onDelete: "cascade" }),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    authorProfileId: uuid("author_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+    // Slettede beskeder bliver stående som tomme pladser, så en samtale ikke pludselig giver mindre mening.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedByUserId: uuid("deleted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [index("chat_messages_thread_idx").on(t.threadId, t.createdAt)],
+);
+
+export const chatReads = pgTable(
+  "chat_reads",
+  {
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => chatThreads.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.threadId, t.userId] })],
+);

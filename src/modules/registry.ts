@@ -5,7 +5,7 @@
 // indstillinger, som foreningen selv vælger. HoldLiv fastsætter aldrig beløb: satser og
 // priser i et modul sættes af foreningens egen admin eller træner.
 
-export type ModuleKey = "carpool" | "tasks" | "fines";
+export type ModuleKey = "carpool" | "tasks" | "fines" | "chat";
 
 export type ConfigField =
   | { key: string; label: string; type: "int"; min: number; max: number; default: number; hint?: string }
@@ -38,6 +38,14 @@ export const MODULES: Registry = {
     name: "Frugt og opgaver",
     description: "Frugtliste, oprydning og kridtning fordelt retfærdigt på familierne.",
     path: "opgaver",
+    fields: [],
+    available: true,
+  },
+  chat: {
+    key: "chat",
+    name: "Holdchat",
+    description: "Samtaler for hele holdet, for trænerne og for trænere og forældre, og en chat pr. aktivitet. Børn har ikke adgang.",
+    path: "chat",
     fields: [],
     available: true,
   },
