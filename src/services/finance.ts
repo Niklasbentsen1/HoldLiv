@@ -403,7 +403,18 @@ export async function previewChargeRun(db: Db, ctx: AccessContext, feeId: string
   assertCan(ctx, { action: "finance.manage", clubId: fee.clubId });
   const period = periodContaining(fee.interval, date);
   const members = await priceRun(db, fee, period);
-  return { fee, period, label: periodLabel(fee.interval, period.start), members, totalOre: members.reduce((n, m) => n + m.amountOre + m.joinFeeOre, 0) };
+  const [any] = await db.select({ id: charges.id }).from(charges).where(and(eq(charges.feeId, feeId), eq(charges.kind, "fee"))).limit(1);
+  return {
+    fee,
+    period,
+    label: periodLabel(fee.interval, period.start),
+    members,
+    totalOre: members.reduce((n, m) => n + m.amountOre + m.joinFeeOre, 0),
+    joinFeeCount: members.filter((m) => m.joinFeeOre > 0).length,
+    joinFeeTotalOre: members.reduce((n, m) => n + m.joinFeeOre, 0),
+    /** Første kørsel for kontingentet: her har medlemmerne typisk været med længe (fx efter en import), så gebyret bør ikke slås til af sig selv. */
+    firstRun: !any,
+  };
 }
 
 /**
@@ -411,13 +422,14 @@ export async function previewChargeRun(db: Db, ctx: AccessContext, feeId: string
  * Beløbet følger foreningens egne regler: forholdsmæssig første periode, søskende- og medlemsrabat, og et engangs indmeldelsesgebyr.
  * Kan køres igen, fx når nye medlemmer er kommet til: allerede opkrævede springes over.
  */
-export async function runCharges(db: Db, ctx: AccessContext, feeId: string, date: string, dueDate?: string) {
+export async function runCharges(db: Db, ctx: AccessContext, feeId: string, date: string, dueDate?: string, opts: { includeJoinFee?: boolean } = {}) {
   const fee = await loadFee(db, feeId);
   assertCan(ctx, { action: "finance.manage", clubId: fee.clubId });
   if (fee.archivedAt) throw new Error("Kontingentet er arkiveret");
   const period = periodContaining(fee.interval, date);
   const due = dueDate || addDays(localDate(ctx.now) > period.start ? localDate(ctx.now) : period.start, 14);
   const members = await priceRun(db, fee, period);
+  if (opts.includeJoinFee === false) for (const m of members) m.joinFeeOre = 0;
   if (members.length === 0) return { created: 0, totalOre: 0, joinFees: 0 };
   const label = periodLabel(fee.interval, period.start);
   const created = await db

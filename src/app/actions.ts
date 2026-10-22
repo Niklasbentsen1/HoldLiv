@@ -745,7 +745,7 @@ export async function chargeFee(formData: FormData) {
   const { ctx } = await requireSession();
   let result = { created: 0, totalOre: 0 };
   await attempt(kasse(formData, "/kontingenter"), async () => {
-    result = await runCharges(db, ctx, str(formData, "feeId"), str(formData, "period"), opt(formData, "dueDate") ?? undefined);
+    result = await runCharges(db, ctx, str(formData, "feeId"), str(formData, "period"), opt(formData, "dueDate") ?? undefined, { includeJoinFee: formData.get("joinFee") === "on" });
   });
   redirect(`${kasse(formData, "/opkraevninger")}&oprettet=${result.created}`);
 }

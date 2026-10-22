@@ -61,7 +61,8 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
                   <select name="period">
                     {run.options.map((o) => (
                       <option key={o.period.start} value={o.period.start}>
-                        {o.label} ({o.members.length} mangler)
+                        {o.label} ({o.members.length} mangler
+                        {o.joinFeeCount > 0 ? `, heraf ${o.joinFeeCount} med indmeldelsesgebyr` : ""}, i alt {kr(o.totalOre)})
                       </option>
                     ))}
                   </select>
@@ -71,6 +72,14 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
                   <input type="date" name="dueDate" min={today} />
                 </label>
               </div>
+              {f.joinFeeOre > 0 && (
+                <label className="small">
+                  <input type="checkbox" name="joinFee" defaultChecked={!run.options[0].firstRun} /> Opkræv indmeldelsesgebyr ({kr(f.joinFeeOre)}) hos medlemmer, der ikke har betalt kontingent før
+                  <span className="muted block">
+                    Ved første kørsel er det typisk ikke nye medlemmer (fx efter en import), så feltet er ikke sat af sig selv. Det er det, der står i valget ovenfor, der opkræves.
+                  </span>
+                </label>
+              )}
               <button className="primary">Send opkrævning</button>
             </form>
             <p className="muted small">

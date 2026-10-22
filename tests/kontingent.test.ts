@@ -87,6 +87,7 @@ describe("opkrævning med foreningens egne regler", () => {
     expect(preview.totalOre).toBe(100_000 * 2 + 75_000 * 2 + 15_000 * 4);
 
     const run = await runCharges(db, admin, feeId, "2026-11-02");
+    expect(preview).toMatchObject({ joinFeeCount: 4, joinFeeTotalOre: 60_000, firstRun: true });
     expect(run).toMatchObject({ created: 4, joinFees: 4, totalOre: preview.totalOre });
     const rows = await db.select().from(charges).where(eq(charges.profileId, young));
     expect(rows.map((r) => [r.kind, r.amountOre]).sort()).toEqual([["fee", 75_000], ["join_fee", 15_000]]);
@@ -110,6 +111,16 @@ describe("opkrævning med foreningens egne regler", () => {
     expect(preview.members.find((x) => x.profileId === m.id)!.joinFeeOre).toBe(0);
     expect(preview.members.find((x) => x.profileId === nyt.id)!.joinFeeOre).toBe(20_000);
     await db.delete(clubMemberships).where(eq(clubMemberships.profileId, nyt.id));
+    await db.update(clubMemberships).set({ feeId: null }).where(eq(clubMemberships.profileId, m.id));
+  });
+
+  it("kan opkræve kontingent uden indmeldelsesgebyr, og gebyret kommer så aldrig bagefter", async () => {
+    const fee = await createFee(db, admin, clubId, { name: "Import", amountOre: 30_000, interval: "year", joinFeeOre: 10_000 });
+    const [m] = await db.insert(profiles).values({ firstName: "Importeret", lastName: "Medlem", birthDate: "1975-01-01" }).returning();
+    await db.insert(clubMemberships).values({ clubId, profileId: m.id, feeId: fee.id, joinedAt: new Date("2020-01-01T00:00:00Z") });
+    expect((await previewChargeRun(db, admin, fee.id, "2027-03-01")).joinFeeCount).toBe(1);
+    expect(await runCharges(db, admin, fee.id, "2027-03-01", undefined, { includeJoinFee: false })).toMatchObject({ created: 1, joinFees: 0 });
+    expect((await previewChargeRun(db, admin, fee.id, "2028-03-01")).joinFeeCount).toBe(0);
     await db.update(clubMemberships).set({ feeId: null }).where(eq(clubMemberships.profileId, m.id));
   });
 
