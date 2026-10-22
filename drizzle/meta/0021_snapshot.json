@@ -1,5 +1,5 @@
 {
-  "id": "e792b90e-721a-4c30-9361-31d064a72978",
+  "id": "32c876ec-3cc7-4401-b03f-a8de3c840186",
   "prevId": "497b5b2b-c102-47d1-ac5e-701ad5abdbc5",
   "version": "7",
   "dialect": "postgresql",
@@ -3088,6 +3088,73 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.profile_merge_dismissals": {
+      "name": "profile_merge_dismissals",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "profile_merge_dismissals_user_id_users_id_fk": {
+          "name": "profile_merge_dismissals_user_id_users_id_fk",
+          "tableFrom": "profile_merge_dismissals",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "profile_merge_dismissals_profile_id_profiles_id_fk": {
+          "name": "profile_merge_dismissals_profile_id_profiles_id_fk",
+          "tableFrom": "profile_merge_dismissals",
+          "tableTo": "profiles",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "profile_merge_dismissals_user_id_profile_id_pk": {
+          "name": "profile_merge_dismissals_user_id_profile_id_pk",
+          "columns": [
+            "user_id",
+            "profile_id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

@@ -800,3 +800,18 @@ export const signupRequests = pgTable(
   },
   (t) => [index("signup_requests_club_idx").on(t.clubId, t.status, t.createdAt)],
 );
+
+// Brugeren har sagt nej til at samle en forhåndsoprettet profil med sin egen (se auth/merge.ts).
+export const profileMergeDismissals = pgTable(
+  "profile_merge_dismissals",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.profileId] })],
+);

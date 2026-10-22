@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { canActAs, ForbiddenError } from "../auth/permissions";
 import { decodeCsvBytes } from "../lib/csv";
+import { acceptMergeOffer, declineMergeOffer } from "../auth/merge";
 import { LoginError, requestLogin, sha256, verifyCode } from "../auth/login";
 import { beginTotpSetup, completeMfa, confirmTotpSetup, disableTotp, MfaError, regenerateRecoveryCodes } from "../auth/mfa";
 import {
@@ -327,6 +328,16 @@ export async function decideSignupAction(formData: FormData) {
   );
   revalidatePath("/forening/tilmeldinger");
   redirect(`/forening/tilmeldinger?klub=${clubId}`);
+}
+
+// --- Samling af profiler ---
+
+export async function mergeOfferAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const profileId = str(formData, "profileId");
+  await attempt("/familie", () => (formData.get("intent") === "yes" ? acceptMergeOffer(db, ctx.userId, profileId) : declineMergeOffer(db, ctx.userId, profileId)));
+  revalidatePath("/familie");
+  redirect("/familie");
 }
 
 // --- Privatliv (GDPR) ---

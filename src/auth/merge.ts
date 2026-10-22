@@ -1,8 +1,10 @@
 // Fletter en uovertaget profil ind i en eksisterende (fx forælderen, som en anden forening har importeret eller indmeldt).
 // Kun de rækker, der kan flyttes uden konflikt, flyttes. Hænger profilen fast i andet (beskeder, bøder, samtykker osv.),
 // eller opstår der en konflikt, der ikke kan løses, rulles hele fletningen tilbage, og profilen bliver stående som den er.
-import { sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
+import { clubMemberships, clubs, guardianships, profileMergeDismissals, profiles, users } from "../db/schema";
+import { isMinor } from "./permissions";
 
 class Abort extends Error {}
 
@@ -51,4 +53,61 @@ export async function mergeProfile(db: Db, keepId: string, dupId: string): Promi
     if (e instanceof Abort) return false;
     throw e;
   }
+}
+
+/** Uovertagne profiler med e-mailen, der hverken er børn eller mindreårige. Værger uden fødselsdato tæller med. */
+export async function unclaimedProfilesByEmail(db: Db, email: string) {
+  const rows = await db
+    .select({
+      id: profiles.id,
+      firstName: profiles.firstName,
+      lastName: profiles.lastName,
+      birthDate: profiles.birthDate,
+      isGuardian: sql<boolean>`exists (select 1 from ${guardianships} where ${guardianships.guardianProfileId} = ${profiles.id})`,
+      isChild: sql<boolean>`exists (select 1 from ${guardianships} where ${guardianships.childProfileId} = ${profiles.id})`,
+    })
+    .from(profiles)
+    .where(and(sql`lower(${profiles.email}) = ${email.toLowerCase()}`, isNull(profiles.userId), isNull(profiles.deletedAt)))
+    .orderBy(profiles.createdAt);
+  return rows.filter((c) => !c.isChild && (c.birthDate ? !isMinor(c.birthDate) : c.isGuardian));
+}
+
+export const firstNameOf = (n: string) => n.trim().split(/\s+/)[0].toLowerCase();
+
+/**
+ * Brugeren har allerede en profil, og en forening har registreret en anden med samme e-mail og fornavn. Det flettes ikke automatisk:
+ * en forening kunne ellers oprette en profil med en andens e-mail og få vedkommendes oplysninger flettet ind. Brugeren skal selv sige ja.
+ */
+export async function findMergeOffers(db: Db, userId: string) {
+  const [me] = await db.select({ id: profiles.id, firstName: profiles.firstName, email: users.email }).from(users).innerJoin(profiles, eq(profiles.userId, users.id)).where(eq(users.id, userId));
+  if (!me) return [];
+  const dismissed = new Set((await db.select({ id: profileMergeDismissals.profileId }).from(profileMergeDismissals).where(eq(profileMergeDismissals.userId, userId))).map((d) => d.id));
+  const candidates = (await unclaimedProfilesByEmail(db, me.email)).filter((c) => c.id !== me.id && firstNameOf(c.firstName) === firstNameOf(me.firstName) && !dismissed.has(c.id));
+  if (candidates.length === 0) return [];
+  const ids = candidates.map((c) => c.id);
+  const [clubRows, kidRows] = await Promise.all([
+    db.select({ profileId: clubMemberships.profileId, club: clubs.name }).from(clubMemberships).innerJoin(clubs, eq(clubs.id, clubMemberships.clubId)).where(inArray(clubMemberships.profileId, ids)),
+    db.select({ guardian: guardianships.guardianProfileId, n: sql<number>`count(*)::int` }).from(guardianships).where(inArray(guardianships.guardianProfileId, ids)).groupBy(guardianships.guardianProfileId),
+  ]);
+  return candidates.map((c) => ({
+    profileId: c.id,
+    name: `${c.firstName} ${c.lastName}`.trim(),
+    clubs: [...new Set(clubRows.filter((r) => r.profileId === c.id).map((r) => r.club))],
+    children: kidRows.find((k) => k.guardian === c.id)?.n ?? 0,
+  }));
+}
+
+/** Ja: flet profilen ind i brugerens egen. Kan ikke flettes uden konflikt, får brugeren en forklaring. */
+export async function acceptMergeOffer(db: Db, userId: string, profileId: string) {
+  const offer = (await findMergeOffers(db, userId)).find((o) => o.profileId === profileId);
+  if (!offer) throw new Error("Tilbuddet findes ikke længere.");
+  const [me] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.userId, userId));
+  if (!(await mergeProfile(db, me.id, profileId))) throw new Error("Profilerne kunne ikke samles automatisk. Kontakt foreningen.");
+}
+
+/** Nej: profilen tilbydes ikke igen. */
+export async function declineMergeOffer(db: Db, userId: string, profileId: string) {
+  const offer = (await findMergeOffers(db, userId)).find((o) => o.profileId === profileId);
+  if (!offer) return;
+  await db.insert(profileMergeDismissals).values({ userId, profileId }).onConflictDoNothing();
 }

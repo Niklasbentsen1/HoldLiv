@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { testDb } from "./db";
 import { loadAccessContext } from "../src/auth/context";
 import { claimProfile } from "../src/auth/login";
+import { acceptMergeOffer, declineMergeOffer, findMergeOffers } from "../src/auth/merge";
 import { registerUser, createClub, createTeam, runImport, getSignupInfo, saveSignupSettings, submitSignup, listSignups, decideSignup, setTeamCapacity } from "../src/services";
 import { clubMemberships, guardianships, profiles, signupRequests, teamMembers, teamWaitlist, users } from "../src/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
@@ -158,13 +159,32 @@ describe("privatliv mellem foreninger og fletning ved login", () => {
     expect(veras).toHaveLength(2);
     const fresh = veras.find((p) => p.userId === null)!;
     expect(fresh).toMatchObject({ birthDate: "1990-01-01", phone: null });
-    // Først når Vera selv bekræfter e-mailen, flettes de.
+    // Et login med en eksisterende profil flettes aldrig automatisk: først tilbydes det, og intet flyttes før Ja.
     await claimProfile(db, vera.user.id, "vera@eks.dk");
+    expect(await db.select().from(profiles).where(eq(profiles.firstName, "Vera"))).toHaveLength(2);
+    expect(await db.select().from(clubMemberships).where(eq(clubMemberships.profileId, vera.profile.id))).toHaveLength(1);
+    const offers = await findMergeOffers(db, vera.user.id);
+    expect(offers).toMatchObject([{ profileId: fresh.id, clubs: ["Ind IF"], children: 0 }]);
+    // Offeret afslører ikke andet end det, brugeren selv kan genkende. Nej skjuler tilbuddet uden at flytte noget.
+    await acceptMergeOffer(db, vera.user.id, fresh.id);
     const after = await db.select().from(profiles).where(eq(profiles.firstName, "Vera"));
     expect(after).toHaveLength(1);
     expect(after[0]).toMatchObject({ id: vera.profile.id, birthDate: "1975-03-03", phone: "11 22 33 44" });
     const memberships = await db.select().from(clubMemberships).where(eq(clubMemberships.profileId, vera.profile.id));
     expect(memberships.map((m) => m.clubId).sort()).toEqual([clubA.id, clubId].sort());
+    expect(await findMergeOffers(db, vera.user.id)).toEqual([]);
+  });
+
+  it("kan sige nej til et tilbud, og et tilbud kan ikke bruges af andre", async () => {
+    const nina = await registerUser(db, "nina@eks.dk", { firstName: "Nina", lastName: "Nor", birthDate: "1982-02-02" });
+    const [dup] = await db.insert(profiles).values({ firstName: "Nina", lastName: "Nordahl", birthDate: "1982-02-02", email: "nina@eks.dk" }).returning();
+    const offers = await findMergeOffers(db, nina.user.id);
+    expect(offers).toHaveLength(1);
+    const stranger = await registerUser(db, "fremmed2@ind.test", { firstName: "Nina", lastName: "Andre" });
+    await expect(acceptMergeOffer(db, stranger.user.id, dup.id)).rejects.toThrow("findes ikke");
+    await declineMergeOffer(db, nina.user.id, dup.id);
+    expect(await findMergeOffers(db, nina.user.id)).toEqual([]);
+    expect(await db.select().from(profiles).where(eq(profiles.id, dup.id))).toHaveLength(1);
   });
 
   it("samler en forælders børn fra to foreninger, også når efternavnet afviger, men ikke for en anden med samme e-mail", async () => {
@@ -176,6 +196,9 @@ describe("privatliv mellem foreninger og fletning ved login", () => {
     await runImport(db, admin, clubId, file, null, true);
     expect((await loadAccessContext(db, mona.user.id, now)).wards.size).toBe(1);
     await claimProfile(db, mona.user.id, "mona@eks.dk");
+    expect((await loadAccessContext(db, mona.user.id, now)).wards.size).toBe(1);
+    const [offer] = await findMergeOffers(db, mona.user.id);
+    await acceptMergeOffer(db, mona.user.id, offer.profileId);
     const wards = (await loadAccessContext(db, mona.user.id, now)).wards;
     const names = (await db.select().from(profiles).where(inArray(profiles.id, [...wards]))).map((p) => p.lastName).sort();
     // Barn To (Mona Mor-Hansen) kommer med; Barn Tre hører til Per, som kun deler e-mail, og forbliver hos ham.
