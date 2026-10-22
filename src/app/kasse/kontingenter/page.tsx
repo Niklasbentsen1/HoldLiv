@@ -4,7 +4,7 @@ import { requireSession } from "../../../lib/session";
 import { INTERVAL_LABEL, kr, localDate, nextPeriod, periodContaining, type FeeInterval } from "../../../lib/money";
 import { ErrorBox } from "../../../components/Shell";
 import { KasseShell, NoAccess, pickFinanceClub } from "../../../components/Kasse";
-import { chargeFee, editFee, newFee, teamFee } from "../../actions";
+import { chargeFee, editFee, newFee, saveArrearsBlock, teamFee } from "../../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +45,12 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
                 {kr(f.amountOre)} {INTERVAL_LABEL[f.interval]}
               </span>
             </div>
-            <div className="muted small">{f.members} betalende medlemmer</div>
+            <div className="muted small">
+              {f.members} betalende medlemmer
+              {f.joinFeeOre > 0 && ` · indmeldelsesgebyr ${kr(f.joinFeeOre)}`}
+              {f.siblingDiscountPercent > 0 && ` · søskenderabat ${f.siblingDiscountPercent} %`}
+              {f.prorate && " · forholdsmæssig første periode"}
+            </div>
 
             <form action={chargeFee} className="stack">
               <input type="hidden" name="clubId" value={club.id} />
@@ -56,7 +61,8 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
                   <select name="period">
                     {run.options.map((o) => (
                       <option key={o.period.start} value={o.period.start}>
-                        {o.label} ({o.members.length} mangler)
+                        {o.label} ({o.members.length} mangler
+                        {o.joinFeeCount > 0 ? `, heraf ${o.joinFeeCount} med indmeldelsesgebyr` : ""}, i alt {kr(o.totalOre)})
                       </option>
                     ))}
                   </select>
@@ -66,6 +72,14 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
                   <input type="date" name="dueDate" min={today} />
                 </label>
               </div>
+              {f.joinFeeOre > 0 && (
+                <label className="small">
+                  <input type="checkbox" name="joinFee" defaultChecked={!run.options[0].firstRun} /> Opkræv indmeldelsesgebyr ({kr(f.joinFeeOre)}) hos medlemmer, der ikke har betalt kontingent før
+                  <span className="muted block">
+                    Ved første kørsel er det typisk ikke nye medlemmer (fx efter en import), så feltet er ikke sat af sig selv. Det er det, der står i valget ovenfor, der opkræves.
+                  </span>
+                </label>
+              )}
               <button className="primary">Send opkrævning</button>
             </form>
             <p className="muted small">
@@ -97,6 +111,19 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
                       </option>
                     ))}
                   </select>
+                </label>
+                <div className="row">
+                  <label>
+                    Indmeldelsesgebyr (kr.) <span className="muted">(engang, tomt = intet)</span>
+                    <input name="joinFee" defaultValue={f.joinFeeOre ? krInput(f.joinFeeOre) : ""} inputMode="decimal" />
+                  </label>
+                  <label>
+                    Søskenderabat i procent <span className="muted">(til de yngre søskende)</span>
+                    <input name="siblingDiscount" type="number" min={0} max={100} defaultValue={f.siblingDiscountPercent || ""} />
+                  </label>
+                </div>
+                <label className="check">
+                  <input type="checkbox" name="prorate" defaultChecked={f.prorate} /> Første periode opkræves forholdsmæssigt ud fra indmeldelsesdatoen
                 </label>
                 <button>Gem</button>
                 <p className="muted small">Ændringer gælder kommende opkrævninger. Allerede sendte opkrævninger ændres ikke.</p>
@@ -136,9 +163,32 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
               </select>
             </label>
           </div>
+          <div className="row">
+            <label>
+              Indmeldelsesgebyr (kr.) <span className="muted">(engang, tomt = intet)</span>
+              <input name="joinFee" inputMode="decimal" />
+            </label>
+            <label>
+              Søskenderabat i procent <span className="muted">(til de yngre søskende)</span>
+              <input name="siblingDiscount" type="number" min={0} max={100} />
+            </label>
+          </div>
+          <label className="check">
+            <input type="checkbox" name="prorate" /> Første periode opkræves forholdsmæssigt ud fra indmeldelsesdatoen
+          </label>
           <button className="primary">Opret kontingent</button>
         </form>
       </details>
+
+      <h2>Restance</h2>
+      <form action={saveArrearsBlock} className="inline">
+        <input type="hidden" name="clubId" value={club.id} />
+        <label className="grow">
+          Spær for nye hold efter så mange dages restance <span className="muted">(tomt = ingen spærring; gælder tilmelding via invitationslink)</span>
+          <input name="days" type="number" min={0} max={365} defaultValue={club.arrearsBlockDays ?? ""} />
+        </label>
+        <button>Gem</button>
+      </form>
 
       <h2>Holdenes kontingent</h2>
       <ul className="people">

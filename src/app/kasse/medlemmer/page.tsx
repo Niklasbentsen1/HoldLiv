@@ -66,7 +66,10 @@ export default async function Members({ searchParams }: { searchParams: Promise<
                 </strong>{" "}
                 {m.birthDate && <span className="muted">{age(m.birthDate, today)} år</span>}
               </span>
-              {m.openOre > 0 && <span className={m.overdue ? "tag overdue" : "tag open"}>Skylder {kr(m.openOre)}</span>}
+              <span>
+                {m.blocked && <span className="tag overdue" title="Kan ikke tilmelde sig nye hold, før restancen er betalt">Spærret </span>}
+                {m.openOre > 0 && <span className={m.overdue ? "tag overdue" : "tag open"}>Skylder {kr(m.openOre)}</span>}
+              </span>
             </div>
             <div className="small">
               {m.status !== "active" ? (
@@ -74,7 +77,10 @@ export default async function Members({ searchParams }: { searchParams: Promise<
               ) : m.exempt ? (
                 "Gratist"
               ) : m.feeName ? (
-                m.feeName
+                <>
+                  {m.feeName}
+                  {m.discountPercent > 0 && <span className="muted"> (rabat {m.discountPercent} %)</span>}
+                </>
               ) : (
                 <span className="tag overdue">Mangler kontingent</span>
               )}
@@ -103,6 +109,10 @@ export default async function Members({ searchParams }: { searchParams: Promise<
                       </option>
                     ))}
                   </select>
+                </label>
+                <label>
+                  Rabat i procent <span className="muted">(0 = ingen)</span>
+                  <input name="discountPercent" type="number" min={0} max={100} defaultValue={m.discountPercent} />
                 </label>
                 <label className="check">
                   <input type="checkbox" name="exempt" defaultChecked={m.exempt} /> Gratist (træner, frivillig eller pause)

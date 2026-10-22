@@ -114,13 +114,13 @@ describe("kassereren Sofie", () => {
     const ctx = await ctxOf("sofie");
     const preview = await previewChargeRun(db, ctx, demo.fees.kids.id, "2026-10-22");
     expect(preview.members).toHaveLength(0);
-    expect(await runCharges(db, ctx, demo.fees.kids.id, "2026-10-22")).toEqual({ created: 0, totalOre: 0 });
+    expect(await runCharges(db, ctx, demo.fees.kids.id, "2026-10-22")).toEqual({ created: 0, totalOre: 0, joinFees: 0 });
 
     // Næste halvår: alle ni børn opkræves, med frist 14 dage efter periodens start.
     const next = await previewChargeRun(db, ctx, demo.fees.kids.id, "2027-01-01");
     expect(next.members).toHaveLength(9);
     expect(next.totalOre).toBe(9 * 65000);
-    expect(await runCharges(db, ctx, demo.fees.kids.id, "2027-01-01")).toEqual({ created: 9, totalOre: 9 * 65000 });
+    expect(await runCharges(db, ctx, demo.fees.kids.id, "2027-01-01")).toEqual({ created: 9, totalOre: 9 * 65000, joinFees: 0 });
     const [c] = await db.select().from(charges).where(and(eq(charges.profileId, demo.emma.id), eq(charges.periodStart, "2027-01-01")));
     expect(c.description).toBe("Børn under 13 år, 1. halvår 2027");
     expect(c.dueDate).toBe("2027-01-15");

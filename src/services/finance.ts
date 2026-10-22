@@ -1,7 +1,7 @@
 // Medlemmer, kontingent og betaling: kassererens værktøj og forældrenes betalingsside.
 // Kassereren (og admin) styrer satser, opkrævninger og registrerer betalinger.
 // Medlemmet selv eller forælderen betaler. Pengene går direkte til foreningens egen Stripe-konto.
-import { and, asc, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import {
   charges,
@@ -18,9 +18,11 @@ import {
   teams,
   users,
 } from "../db/schema";
-import { assertCan, can, isMinor, type AccessContext } from "../auth/permissions";
+import { assertCan, can, canActAs, isMinor, type AccessContext } from "../auth/permissions";
 import { loadTeamFacts } from "../auth/context";
 import { logAudit } from "./audit";
+import { priceCharge } from "../lib/fees";
+import { blockedProfileIds } from "./arrears";
 import { addDays, kr, localDate, longDate, periodContaining, periodLabel, type FeeInterval } from "../lib/money";
 import type { PaymentProvider } from "../lib/payments";
 import type { Mailer } from "../lib/mail";
@@ -32,7 +34,7 @@ export async function listFinanceClubs(db: Db, ctx: AccessContext) {
   const ids = financeClubIds(ctx);
   if (ids.length === 0) return [];
   const rows = await db
-    .select({ id: clubs.id, name: clubs.name, stripeAccountId: clubs.stripeAccountId })
+    .select({ id: clubs.id, name: clubs.name, stripeAccountId: clubs.stripeAccountId, arrearsBlockDays: clubs.arrearsBlockDays })
     .from(clubs)
     .where(inArray(clubs.id, ids))
     .orderBy(asc(clubs.name));
@@ -86,13 +88,22 @@ export interface FeeInput {
   name: string;
   amountOre: number;
   interval: FeeInterval;
+  joinFeeOre?: number;
+  prorate?: boolean;
+  siblingDiscountPercent?: number;
 }
+
+const checkPercent = (v: number | undefined, what: string) => {
+  if (v !== undefined && (!Number.isInteger(v) || v < 0 || v > 100)) throw new Error(`${what} skal være et helt tal fra 0 til 100.`);
+};
 
 function checkFee(input: Partial<FeeInput>) {
   if (input.name !== undefined && !input.name.trim()) throw new Error("Giv kontingentet et navn");
   if (input.amountOre !== undefined && (!Number.isInteger(input.amountOre) || input.amountOre < 0)) {
     throw new Error("Beløbet skal være 0 kr. eller mere");
   }
+  if (input.joinFeeOre !== undefined && (!Number.isInteger(input.joinFeeOre) || input.joinFeeOre < 0)) throw new Error("Indmeldelsesgebyret skal være 0 kr. eller mere");
+  checkPercent(input.siblingDiscountPercent, "Søskenderabatten");
 }
 
 export async function listFees(db: Db, ctx: AccessContext, clubId: string) {
@@ -170,6 +181,7 @@ export async function listMembers(db: Db, ctx: AccessContext, clubId: string, op
       feeId: clubMemberships.feeId,
       feeName: membershipFees.name,
       exempt: clubMemberships.exempt,
+      discountPercent: clubMemberships.discountPercent,
       joinedAt: clubMemberships.joinedAt,
       leftAt: clubMemberships.leftAt,
     })
@@ -198,6 +210,7 @@ export async function listMembers(db: Db, ctx: AccessContext, clubId: string, op
       .where(and(eq(charges.clubId, clubId), eq(charges.status, "open"))),
   ]);
 
+  const blocked = await blockedProfileIds(db, clubId, ids, today);
   const q = opts.q?.trim().toLowerCase();
   return rows
     .map((r) => {
@@ -210,6 +223,7 @@ export async function listMembers(db: Db, ctx: AccessContext, clubId: string, op
         guardians: minor ? guardianRows.filter((g) => g.childId === r.profileId).map(({ childId, ...g }) => g) : [],
         openOre: open.reduce((s, c) => s + c.amountOre, 0),
         overdue: open.some((c) => c.dueDate < today),
+        blocked: blocked.has(r.profileId),
       };
     })
     .filter((m) => {
@@ -236,6 +250,8 @@ export interface MembershipPatch {
   exempt?: boolean;
   /** inactive = udmeldt. Udmeldte får ingen nye opkrævninger, men historikken bevares. */
   status?: "active" | "inactive";
+  /** Rabat i procent på dette medlems kontingent. */
+  discountPercent?: number;
 }
 
 export async function updateMembership(db: Db, ctx: AccessContext, clubId: string, profileId: string, patch: MembershipPatch) {
@@ -245,8 +261,10 @@ export async function updateMembership(db: Db, ctx: AccessContext, clubId: strin
     if (fee.clubId !== clubId) throw new Error("Kontingentet hører til en anden forening");
     if (fee.archivedAt) throw new Error("Kontingentet er arkiveret");
   }
+  checkPercent(patch.discountPercent, "Rabatten");
   const set: Partial<typeof clubMemberships.$inferInsert> = {};
   if (patch.feeId !== undefined) set.feeId = patch.feeId;
+  if (patch.discountPercent !== undefined) set.discountPercent = patch.discountPercent;
   if (patch.exempt !== undefined) set.exempt = patch.exempt;
   if (patch.status) {
     set.status = patch.status;
@@ -307,7 +325,13 @@ export async function membersCsv(db: Db, ctx: AccessContext, clubId: string) {
 /** Aktive, betalende medlemmer på kontingentet, der ikke allerede er opkrævet for perioden. */
 async function chargeRunCandidates(db: Db, feeId: string, periodStart: string) {
   return db
-    .select({ profileId: clubMemberships.profileId, firstName: profiles.firstName, lastName: profiles.lastName })
+    .select({
+      profileId: clubMemberships.profileId,
+      firstName: profiles.firstName,
+      lastName: profiles.lastName,
+      joinedAt: clubMemberships.joinedAt,
+      discountPercent: clubMemberships.discountPercent,
+    })
     .from(clubMemberships)
     .innerJoin(profiles, eq(profiles.id, clubMemberships.profileId))
     .leftJoin(charges, and(eq(charges.profileId, clubMemberships.profileId), eq(charges.feeId, feeId), eq(charges.periodStart, periodStart)))
@@ -322,27 +346,92 @@ async function chargeRunCandidates(db: Db, feeId: string, periodStart: string) {
     .orderBy(asc(profiles.firstName));
 }
 
+/** 0 for den ældste barn i en familie på samme kontingent, 1 for den næste osv. Familie = fælles forælder. */
+async function siblingRanks(db: Db, fee: typeof membershipFees.$inferSelect, profileIds: string[]) {
+  const ranks = new Map<string, number>(profileIds.map((id) => [id, 0]));
+  if (fee.siblingDiscountPercent === 0 || profileIds.length === 0) return ranks;
+  const mine = await db.select({ guardian: guardianships.guardianProfileId }).from(guardianships).where(inArray(guardianships.childProfileId, profileIds));
+  const guardianIds = [...new Set(mine.map((g) => g.guardian))];
+  if (guardianIds.length === 0) return ranks;
+  const rows = await db
+    .select({ guardian: guardianships.guardianProfileId, child: guardianships.childProfileId, birthDate: profiles.birthDate })
+    .from(guardianships)
+    .innerJoin(clubMemberships, and(eq(clubMemberships.profileId, guardianships.childProfileId), eq(clubMemberships.clubId, fee.clubId), eq(clubMemberships.feeId, fee.id), eq(clubMemberships.status, "active"), eq(clubMemberships.exempt, false)))
+    .innerJoin(profiles, eq(profiles.id, guardianships.childProfileId))
+    .where(inArray(guardianships.guardianProfileId, guardianIds));
+  const born = new Map(rows.map((r) => [r.child, r.birthDate ?? "9999-12-31"]));
+  const guardiansOf = new Map<string, Set<string>>();
+  for (const r of rows) guardiansOf.set(r.child, (guardiansOf.get(r.child) ?? new Set()).add(r.guardian));
+  for (const id of profileIds) {
+    const g = guardiansOf.get(id);
+    if (!g) continue;
+    let older = 0;
+    for (const [other, gs] of guardiansOf) {
+      if (other === id || ![...gs].some((x) => g.has(x))) continue;
+      const [a, b] = [born.get(other)!, born.get(id)!];
+      if (a < b || (a === b && other < id)) older++;
+    }
+    ranks.set(id, older);
+  }
+  return ranks;
+}
+
+async function priceRun(db: Db, fee: typeof membershipFees.$inferSelect, period: { start: string; end: string }) {
+  const candidates = await chargeRunCandidates(db, fee.id, period.start);
+  const ranks = await siblingRanks(db, fee, candidates.map((c) => c.profileId));
+  const joined = candidates.length
+    ? await db.select({ profileId: charges.profileId }).from(charges).where(and(eq(charges.clubId, fee.clubId), or(eq(charges.kind, "join_fee"), isNotNull(charges.feeId)), inArray(charges.profileId, candidates.map((c) => c.profileId))))
+    : [];
+  // Gebyret gives kun ved medlemmets første kontingentopkrævning i foreningen; et medlem, der allerede har betalt kontingent, er ikke nyt.
+  const hasJoinFee = new Set(joined.map((j) => j.profileId));
+  return candidates.map((m) => {
+    const price = priceCharge({
+      amountOre: fee.amountOre,
+      period,
+      joinedOn: localDate(m.joinedAt),
+      prorate: fee.prorate,
+      siblingDiscountPercent: fee.siblingDiscountPercent,
+      siblingRank: ranks.get(m.profileId) ?? 0,
+      memberDiscountPercent: m.discountPercent,
+    });
+    return { ...m, amountOre: price.amountOre, notes: price.notes, joinFeeOre: fee.joinFeeOre > 0 && !hasJoinFee.has(m.profileId) ? fee.joinFeeOre : 0 };
+  });
+}
+
 export async function previewChargeRun(db: Db, ctx: AccessContext, feeId: string, date: string) {
   const fee = await loadFee(db, feeId);
   assertCan(ctx, { action: "finance.manage", clubId: fee.clubId });
   const period = periodContaining(fee.interval, date);
-  const members = await chargeRunCandidates(db, feeId, period.start);
-  return { fee, period, label: periodLabel(fee.interval, period.start), members, totalOre: members.length * fee.amountOre };
+  const members = await priceRun(db, fee, period);
+  const [any] = await db.select({ id: charges.id }).from(charges).where(and(eq(charges.feeId, feeId), eq(charges.kind, "fee"))).limit(1);
+  return {
+    fee,
+    period,
+    label: periodLabel(fee.interval, period.start),
+    members,
+    totalOre: members.reduce((n, m) => n + m.amountOre + m.joinFeeOre, 0),
+    joinFeeCount: members.filter((m) => m.joinFeeOre > 0).length,
+    joinFeeTotalOre: members.reduce((n, m) => n + m.joinFeeOre, 0),
+    /** Første kørsel for kontingentet: her har medlemmerne typisk været med længe (fx efter en import), så gebyret bør ikke slås til af sig selv. */
+    firstRun: !any,
+  };
 }
 
 /**
  * Opkræver kontingent for perioden der indeholder `date`, hos alle aktive medlemmer på satsen.
+ * Beløbet følger foreningens egne regler: forholdsmæssig første periode, søskende- og medlemsrabat, og et engangs indmeldelsesgebyr.
  * Kan køres igen, fx når nye medlemmer er kommet til: allerede opkrævede springes over.
  */
-export async function runCharges(db: Db, ctx: AccessContext, feeId: string, date: string, dueDate?: string) {
+export async function runCharges(db: Db, ctx: AccessContext, feeId: string, date: string, dueDate?: string, opts: { includeJoinFee?: boolean } = {}) {
   const fee = await loadFee(db, feeId);
   assertCan(ctx, { action: "finance.manage", clubId: fee.clubId });
   if (fee.archivedAt) throw new Error("Kontingentet er arkiveret");
   const period = periodContaining(fee.interval, date);
   const due = dueDate || addDays(localDate(ctx.now) > period.start ? localDate(ctx.now) : period.start, 14);
-  const members = await chargeRunCandidates(db, feeId, period.start);
-  if (members.length === 0) return { created: 0, totalOre: 0 };
-  const description = `${fee.name}, ${periodLabel(fee.interval, period.start)}`;
+  const members = await priceRun(db, fee, period);
+  if (opts.includeJoinFee === false) for (const m of members) m.joinFeeOre = 0;
+  if (members.length === 0) return { created: 0, totalOre: 0, joinFees: 0 };
+  const label = periodLabel(fee.interval, period.start);
   const created = await db
     .insert(charges)
     .values(
@@ -350,21 +439,44 @@ export async function runCharges(db: Db, ctx: AccessContext, feeId: string, date
         clubId: fee.clubId,
         profileId: m.profileId,
         feeId,
-        description,
-        amountOre: fee.amountOre,
+        description: `${fee.name}, ${label}${m.notes.length ? ` (${m.notes.join(", ")})` : ""}`,
+        amountOre: m.amountOre,
         periodStart: period.start,
         periodEnd: period.end,
         dueDate: due,
         // 0-kroners kontingent opkræves ikke, men registreres som betalt, så historikken er hel.
-        status: fee.amountOre === 0 ? ("paid" as const) : ("open" as const),
-        paidAt: fee.amountOre === 0 ? ctx.now : null,
+        status: m.amountOre === 0 ? ("paid" as const) : ("open" as const),
+        paidAt: m.amountOre === 0 ? ctx.now : null,
         createdByUserId: ctx.userId,
       })),
     )
     .onConflictDoNothing()
-    .returning({ id: charges.id });
-  await logAudit(db, { action: "charges.run", clubId: fee.clubId, actorUserId: ctx.userId, targetType: "fee", targetId: feeId, detail: { created: created.length, period: period.start } });
-  return { created: created.length, totalOre: created.length * fee.amountOre };
+    .returning({ id: charges.id, profileId: charges.profileId, amountOre: charges.amountOre });
+  const chargedIds = new Set(created.map((c) => c.profileId));
+  const joinFees = members.filter((m) => m.joinFeeOre > 0 && chargedIds.has(m.profileId));
+  const joinCreated = joinFees.length
+    ? await db
+        .insert(charges)
+        .values(
+          joinFees.map((m) => ({
+            clubId: fee.clubId,
+            profileId: m.profileId,
+            feeId: null,
+            kind: "join_fee" as const,
+            description: `Indmeldelsesgebyr, ${fee.name}`,
+            amountOre: m.joinFeeOre,
+            periodStart: period.start,
+            periodEnd: period.end,
+            dueDate: due,
+            createdByUserId: ctx.userId,
+          })),
+        )
+        .onConflictDoNothing()
+        .returning({ id: charges.id, amountOre: charges.amountOre })
+    : [];
+  const totalOre = created.reduce((n, c) => n + c.amountOre, 0) + joinCreated.reduce((n, c) => n + c.amountOre, 0);
+  await logAudit(db, { action: "charges.run", clubId: fee.clubId, actorUserId: ctx.userId, targetType: "fee", targetId: feeId, detail: { created: created.length, joinFees: joinCreated.length, period: period.start } });
+  return { created: created.length, totalOre, joinFees: joinCreated.length };
 }
 
 /** Enkeltopkrævning, fx et stævne eller et tøjsæt, til ét medlem. */
@@ -383,7 +495,7 @@ export async function createSingleCharge(
   const today = localDate(ctx.now);
   const [c] = await db
     .insert(charges)
-    .values({ clubId, profileId, description: input.description.trim(), amountOre: input.amountOre, periodStart: today, periodEnd: today, dueDate: input.dueDate, createdByUserId: ctx.userId })
+    .values({ clubId, profileId, kind: "other", description: input.description.trim(), amountOre: input.amountOre, periodStart: today, periodEnd: today, dueDate: input.dueDate, createdByUserId: ctx.userId })
     .returning();
   return c;
 }
@@ -707,3 +819,30 @@ export async function connectPayments(db: Db, ctx: AccessContext, clubId: string
 }
 
 export const canHandleFinance = (ctx: AccessContext, clubId: string) => can(ctx, { action: "finance.manage", clubId });
+
+/** Efter så mange dages restance spærres medlemmet for nye hold. Tom = ingen spærring. */
+export async function setArrearsBlock(db: Db, ctx: AccessContext, clubId: string, days: number | null) {
+  assertCan(ctx, { action: "finance.manage", clubId });
+  if (days !== null && (!Number.isInteger(days) || days < 0 || days > 365)) throw new Error("Antal dage skal være et helt tal fra 0 til 365.");
+  await db.update(clubs).set({ arrearsBlockDays: days }).where(eq(clubs.id, clubId));
+  await logAudit(db, { action: "arrears.block", clubId, actorUserId: ctx.userId, detail: { days } });
+}
+
+/** Data til en PDF-kvittering for en betalt opkrævning. Betaleren (eller forælderen) og foreningens kasserer må hente den. */
+export async function getReceipt(db: Db, ctx: AccessContext, chargeId: string) {
+  const charge = await loadCharge(db, chargeId);
+  if (!canActAs(ctx, charge.profileId)) assertCan(ctx, { action: "finance.manage", clubId: charge.clubId });
+  if (charge.status !== "paid" || !charge.paidAt) throw new Error("Der er ikke betalt endnu, så der er ingen kvittering.");
+  const [club] = await db.select({ name: clubs.name }).from(clubs).where(eq(clubs.id, charge.clubId));
+  const [person] = await db.select({ firstName: profiles.firstName, lastName: profiles.lastName }).from(profiles).where(eq(profiles.id, charge.profileId));
+  const [pay] = await db.select().from(payments).where(and(eq(payments.chargeId, chargeId), eq(payments.status, "succeeded"))).orderBy(desc(payments.completedAt)).limit(1);
+  return {
+    number: charge.id.slice(0, 8).toUpperCase(),
+    clubName: club.name,
+    payerName: `${person.firstName} ${person.lastName}`,
+    description: charge.description,
+    amountOre: charge.amountOre,
+    paidOn: localDate(charge.paidAt),
+    method: pay?.provider === "stripe" ? "Betalingskort" : pay?.provider === "manual" ? `Betalt direkte til foreningen${pay.note ? ` (${pay.note})` : ""}` : pay?.provider === "mock" ? "Testbetaling" : charge.amountOre === 0 ? "Ingen betaling nødvendig" : "Betalt",
+  };
+}

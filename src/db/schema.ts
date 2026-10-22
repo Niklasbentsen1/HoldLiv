@@ -178,6 +178,8 @@ export const clubs = pgTable("clubs", {
   signupMinAge: integer("signup_min_age"),
   signupMaxAge: integer("signup_max_age"),
   signupTerms: text("signup_terms"),
+  // Efter så mange dages restance kan medlemmet ikke tilmelde sig nye hold. Null = ingen spærring.
+  arrearsBlockDays: integer("arrears_block_days"),
   createdAt: createdAt(),
 });
 
@@ -195,6 +197,8 @@ export const clubMemberships = pgTable(
     feeId: uuid("fee_id").references(() => membershipFees.id, { onDelete: "set null" }),
     // Gratist: trænere, frivillige, pause. Får ingen opkrævninger.
     exempt: boolean("exempt").notNull().default(false),
+    // Rabat i procent sat af kassereren på dette medlem (fx frivillig). Den største af denne og søskenderabatten gælder.
+    discountPercent: integer("discount_percent").notNull().default(0),
     joinedAt: createdAt(),
     leftAt: timestamp("left_at", { withTimezone: true }),
   },
@@ -330,6 +334,8 @@ export const eventResponses = pgTable(
 
 export const feeInterval = pgEnum("fee_interval", ["month", "quarter", "half_year", "year"]);
 export const chargeStatus = pgEnum("charge_status", ["open", "paid", "cancelled", "refunded"]);
+// fee = kontingent for en periode, join_fee = engangs indmeldelsesgebyr, other = enkeltopkrævning.
+export const chargeKind = pgEnum("charge_kind", ["fee", "join_fee", "other"]);
 export const paymentProvider = pgEnum("payment_provider", ["stripe", "mock", "manual"]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "refunded"]);
 
@@ -344,6 +350,12 @@ export const membershipFees = pgTable(
     name: text("name").notNull(),
     amountOre: integer("amount_ore").notNull(),
     interval: feeInterval("interval").notNull(),
+    // Engangsgebyr, der opkræves sammen med første kontingent. Sat af foreningen; 0 = intet.
+    joinFeeOre: integer("join_fee_ore").notNull().default(0),
+    // Første periode opkræves forholdsmæssigt ud fra indmeldelsesdatoen.
+    prorate: boolean("prorate").notNull().default(false),
+    // Rabat i procent til de yngre søskende (den ældste betaler fuld pris). 0 = ingen.
+    siblingDiscountPercent: integer("sibling_discount_percent").notNull().default(0),
     // Arkiverede satser kan ikke vælges til nye medlemmer, men gamle opkrævninger bevares.
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: createdAt(),
@@ -369,6 +381,7 @@ export const charges = pgTable(
     periodStart: date("period_start").notNull(),
     periodEnd: date("period_end").notNull(),
     dueDate: date("due_date").notNull(),
+    kind: chargeKind("kind").notNull().default("fee"),
     status: chargeStatus("status").notNull().default("open"),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     remindedAt: timestamp("reminded_at", { withTimezone: true }),
@@ -378,6 +391,8 @@ export const charges = pgTable(
   },
   (t) => [
     uniqueIndex("charges_member_period_unique").on(t.profileId, t.feeId, t.periodStart),
+    // Indmeldelsesgebyret opkræves kun én gang pr. medlem og forening.
+    uniqueIndex("charges_join_fee_unique").on(t.clubId, t.profileId).where(sql`${t.kind} = 'join_fee'`),
     index("charges_club_status_idx").on(t.clubId, t.status),
   ],
 );

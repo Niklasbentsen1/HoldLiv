@@ -54,6 +54,7 @@ import {
   completeCheckout,
   connectPayments,
   createFee,
+  setArrearsBlock,
   createSingleCharge,
   getCheckout,
   grantTreasurerByEmail,
@@ -697,9 +698,19 @@ export async function newFee(formData: FormData) {
       name: str(formData, "name"),
       amountOre: parseKr(str(formData, "amount")),
       interval: str(formData, "interval") as FeeInterval,
+      ...feeExtras(formData),
     }),
   );
   revalidatePath("/kasse/kontingenter");
+}
+
+/** Foreningens egne regler: indmeldelsesgebyr, forholdsmæssig første periode og søskenderabat. */
+function feeExtras(formData: FormData) {
+  return {
+    joinFeeOre: str(formData, "joinFee") ? parseKr(str(formData, "joinFee")) : 0,
+    prorate: formData.has("prorate"),
+    siblingDiscountPercent: str(formData, "siblingDiscount") ? Number(str(formData, "siblingDiscount")) : 0,
+  };
 }
 
 export async function editFee(formData: FormData) {
@@ -712,8 +723,15 @@ export async function editFee(formData: FormData) {
       name: str(formData, "name"),
       amountOre: parseKr(str(formData, "amount")),
       interval: str(formData, "interval") as FeeInterval,
+      ...feeExtras(formData),
     });
   });
+  revalidatePath("/kasse/kontingenter");
+}
+
+export async function saveArrearsBlock(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/kontingenter"), () => setArrearsBlock(db, ctx, str(formData, "clubId"), str(formData, "days") === "" ? null : Number(str(formData, "days"))));
   revalidatePath("/kasse/kontingenter");
 }
 
@@ -727,7 +745,7 @@ export async function chargeFee(formData: FormData) {
   const { ctx } = await requireSession();
   let result = { created: 0, totalOre: 0 };
   await attempt(kasse(formData, "/kontingenter"), async () => {
-    result = await runCharges(db, ctx, str(formData, "feeId"), str(formData, "period"), opt(formData, "dueDate") ?? undefined);
+    result = await runCharges(db, ctx, str(formData, "feeId"), str(formData, "period"), opt(formData, "dueDate") ?? undefined, { includeJoinFee: formData.get("joinFee") === "on" });
   });
   redirect(`${kasse(formData, "/opkraevninger")}&oprettet=${result.created}`);
 }
@@ -740,6 +758,7 @@ export async function updateMember(formData: FormData) {
       feeId: formData.has("feeId") ? opt(formData, "feeId") : undefined,
       exempt: formData.has("exemptField") ? formData.has("exempt") : undefined,
       status: (opt(formData, "status") as "active" | "inactive" | null) ?? undefined,
+      discountPercent: formData.has("discountPercent") ? Number(str(formData, "discountPercent") || 0) : undefined,
     }),
   );
   revalidatePath("/kasse/medlemmer");
