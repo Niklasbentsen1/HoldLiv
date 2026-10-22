@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testDb } from "./db";
 import { seedDemo } from "../src/db/demo";
 import { loadAccessContext } from "../src/auth/context";
-import { deleteMessage, getChat, getEventChat, listChats, postMessage, setTeamModule, type Deliver } from "../src/services";
+import { addClubMember, addTeamMember, registerUser, deleteMessage, getChat, getEventChat, listChats, postMessage, setTeamModule, type Deliver } from "../src/services";
 
 const { db, sql, reset } = testDb();
 let demo: Awaited<ReturnType<typeof seedDemo>>;
@@ -109,6 +109,29 @@ describe("beskeder", () => {
     expect(mails).toEqual([]); // Peter er seniorholdets eneste træner
     await postMessage(db, await ctxOf("peter"), deliver, await thread("peter", senior(), "all"), "Hele holdet");
     expect(mails.map((m) => m.to).sort()).toEqual(["ali", "henrik", "jonas", "lars", "niklas"].map((n) => `${n}@holdliv.test`));
+  });
+});
+
+describe("børn med eget login", () => {
+  it("får hverken adgang eller besked, heller ikke en spiller uden fødselsdato", async () => {
+    const karen = await ctxOf("karen");
+    const teen = await registerUser(db, "teen@holdliv.test", { firstName: "Teen", lastName: "Test", birthDate: "2030-01-01" });
+    const nobd = await registerUser(db, "nobd@holdliv.test", { firstName: "Nobd", lastName: "Test" });
+    const adult = await registerUser(db, "voksen@holdliv.test", { firstName: "Voksen", lastName: "Test", birthDate: "1995-01-01" });
+    for (const p of [teen, nobd, adult]) {
+      await addClubMember(db, karen, demo.club.id, p.profile.id);
+      await addTeamMember(db, karen, u9(), p.profile.id, "player");
+    }
+    await sql`insert into notification_prefs (user_id, kind, channel, enabled) select id, 'chat', 'mail', true from users on conflict (user_id, kind, channel) do update set enabled = true`;
+    for (const u of [teen, nobd]) expect(await listChats(db, await loadAccessContext(db, u.user.id), u9())).toEqual([]);
+    expect((await listChats(db, await loadAccessContext(db, adult.user.id), u9())).map((c) => c.kind)).toEqual(["all"]);
+    mails.length = 0;
+    await postMessage(db, await ctxOf("mette"), deliver, await thread("mette", u9(), "all"), "Til hele holdet");
+    const to = mails.map((m) => m.to);
+    expect(to).toContain("voksen@holdliv.test");
+    expect(to).not.toContain("teen@holdliv.test");
+    expect(to).not.toContain("nobd@holdliv.test");
+    await sql`delete from team_members where team_id = ${u9()} and profile_id in (${teen.profile.id}, ${nobd.profile.id}, ${adult.profile.id})`;
   });
 });
 

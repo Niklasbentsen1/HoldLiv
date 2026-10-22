@@ -7,10 +7,10 @@
 // chatten ellers kunne læses uden at nogen ved det.
 import { and, asc, count, desc, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { chatMessages, chatReads, chatThreads, events, guardianships, profiles, teamMembers, teams } from "../db/schema";
+import { chatMessages, chatReads, chatThreads, events, guardianships, profiles, teamMembers, teams, users } from "../db/schema";
 import { isMinor, type AccessContext } from "../auth/permissions";
 import { requireModule } from "./modules";
-import { notifyUsers, recipientsOfPlayers, type Deliver, type Recipient } from "./notifications";
+import { notifyUsers, type Deliver, type Recipient } from "./notifications";
 
 export type ChatKind = "all" | "coaches" | "coaches_parents" | "event";
 export const MAX_MESSAGE_LENGTH = 2000;
@@ -51,29 +51,49 @@ function canSee(kind: ChatKind, r: Roles) {
   return r.coach || r.player || r.parent;
 }
 
-/** Logins i en chat, som modtagere til beskeder. */
+/** Modtagere ud fra login-id'er. */
+async function recipientsOfUsers(db: Db, userIds: string[]): Promise<Recipient[]> {
+  if (userIds.length === 0) return [];
+  return db
+    .select({ userId: users.id, email: users.email, phone: profiles.phone })
+    .from(users)
+    .leftJoin(profiles, eq(profiles.userId, users.id))
+    .where(inArray(users.id, userIds));
+}
+
+/**
+ * Logins i en chat som modtagere. Samme regel som canSee(): trænere, voksne spilleres eget login og forældre til
+ * spillere under 18. Et barn med eget login (eller en spiller uden fødselsdato, som regnes som barn) får aldrig besked.
+ */
 async function membersOf(db: Db, teamId: string, kind: ChatKind, now: Date): Promise<Recipient[]> {
   const [coaches, players] = await Promise.all([
     db
-      .select({ profileId: teamMembers.profileId })
+      .select({ userId: profiles.userId })
       .from(teamMembers)
+      .innerJoin(profiles, eq(profiles.id, teamMembers.profileId))
       .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.role, "coach"))),
     playersOf(db, teamId),
   ]);
-  let list: Recipient[] = [];
-  if (kind === "all" || kind === "event") {
-    list = await recipientsOfPlayers(db, players.map((p) => p.id), now);
-  } else if (kind === "coaches_parents") {
+  const userIds = new Set<string>();
+  const add = (id: string | null) => id && userIds.add(id);
+  coaches.forEach((c) => add(c.userId));
+  if (kind !== "coaches") {
     const minors = players.filter((p) => isMinor(p.birthDate, now)).map((p) => p.id);
-    const guardians = minors.length
-      ? await db.select({ id: guardianships.guardianProfileId }).from(guardianships).where(inArray(guardianships.childProfileId, minors))
-      : [];
-    // Forældrene er selv voksne profiler, så deres eget login er modtageren.
-    list = await recipientsOfPlayers(db, [...new Set(guardians.map((g) => g.id))], now);
+    if (kind !== "coaches_parents") {
+      const adults = players.filter((p) => !isMinor(p.birthDate, now)).map((p) => p.id);
+      const own = adults.length ? await db.select({ userId: profiles.userId }).from(profiles).where(inArray(profiles.id, adults)) : [];
+      own.forEach((r) => add(r.userId));
+    }
+    if (minors.length) {
+      const parents = await db
+        .select({ userId: profiles.userId })
+        .from(guardianships)
+        .innerJoin(profiles, eq(profiles.id, guardianships.guardianProfileId))
+        .where(inArray(guardianships.childProfileId, minors));
+      parents.forEach((r) => add(r.userId));
+    }
   }
-  const coachRecipients = await recipientsOfPlayers(db, coaches.map((c) => c.profileId), now);
-  const byUser = new Map([...list, ...coachRecipients].map((r) => [r.userId, r]));
-  return [...byUser.values()];
+  return recipientsOfUsers(db, [...userIds]);
 }
 
 async function ensureGroupThreads(db: Db, teamId: string) {

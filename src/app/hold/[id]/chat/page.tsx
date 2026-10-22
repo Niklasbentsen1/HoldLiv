@@ -22,9 +22,11 @@ export default async function TeamChat({
   const { fejl, samtale, aktivitet } = await searchParams;
   const { ctx } = await requireSession(`/hold/${id}/chat`);
   const team = await getTeam(db, ctx, id);
-  const chats = await listChats(db, ctx, id);
-  const wanted = aktivitet ? await getEventChat(db, ctx, aktivitet) : (samtale ?? chats[0]?.id);
+  // Samtalen åbnes (og markeres læst) før listen hentes, så den ikke selv viser et ulæst-mærke.
+  const chatsBefore = aktivitet || samtale ? null : await listChats(db, ctx, id);
+  const wanted = aktivitet ? await getEventChat(db, ctx, aktivitet) : (samtale ?? chatsBefore?.[0]?.id);
   const chat = wanted ? await getChat(db, ctx, wanted) : null;
+  const chats = await listChats(db, ctx, id);
 
   return (
     <Shell ctx={ctx}>
