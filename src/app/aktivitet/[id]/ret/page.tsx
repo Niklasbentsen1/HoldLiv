@@ -13,9 +13,9 @@ export default async function EditEvent({ params, searchParams }: { params: Prom
   const { fejl } = await searchParams;
   const { ctx } = await requireSession(`/aktivitet/${id}/ret`);
   const e = await getEventDetail(db, ctx, id);
-  if (!e.canManage) return <Shell>Kun holdets trænere kan rette aktiviteter.</Shell>;
+  if (!e.canManage) return <Shell ctx={ctx}>Kun holdets trænere kan rette aktiviteter.</Shell>;
   return (
-    <Shell admin={ctx.adminClubs.size > 0}>
+    <Shell ctx={ctx}>
       <PageHead back={{ href: `/aktivitet/${id}`, label: e.title }} title="Ret aktivitet" />
       <ErrorBox message={fejl} />
       <form action={editEvent} className="card stack" style={{ maxWidth: 640 }}>

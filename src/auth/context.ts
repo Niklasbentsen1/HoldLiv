@@ -16,8 +16,8 @@ export async function loadAccessContext(db: Db, userId: string, today = new Date
   const [own] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.userId, userId));
   if (!own) throw new Error("Login'et har ingen profil");
 
-  const [admin, coach, children] = await Promise.all([
-    db.select({ clubId: clubRoles.clubId }).from(clubRoles).where(and(eq(clubRoles.profileId, own.id), eq(clubRoles.role, "admin"))),
+  const [roles, coach, children] = await Promise.all([
+    db.select({ clubId: clubRoles.clubId, role: clubRoles.role }).from(clubRoles).where(eq(clubRoles.profileId, own.id)),
     db
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
@@ -32,7 +32,8 @@ export async function loadAccessContext(db: Db, userId: string, today = new Date
   return {
     userId,
     profileId: own.id,
-    adminClubs: new Set(admin.map((r) => r.clubId)),
+    adminClubs: new Set(roles.filter((r) => r.role === "admin").map((r) => r.clubId)),
+    treasurerClubs: new Set(roles.filter((r) => r.role === "treasurer").map((r) => r.clubId)),
     coachTeams: new Set(coach.map((r) => r.teamId)),
     wards: new Set(children.filter((c) => isMinor(c.birthDate, today)).map((c) => c.id)),
     now: today,

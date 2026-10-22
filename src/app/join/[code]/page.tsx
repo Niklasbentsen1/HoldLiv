@@ -16,7 +16,7 @@ export default async function Join({ params, searchParams }: { params: Promise<{
   const team = await findTeamByInvite(db, code);
   if (!team)
     return (
-      <Shell>
+      <Shell ctx={ctx}>
         <h1>Linket virker ikke</h1>
         <p className="muted">Invitationen er udløbet eller er blevet erstattet af en ny. Bed træneren om holdets nye link.</p>
       </Shell>
@@ -24,7 +24,7 @@ export default async function Join({ params, searchParams }: { params: Promise<{
   const acting = await loadActingProfiles(db, ctx);
 
   return (
-    <Shell admin={ctx.adminClubs.size > 0}>
+    <Shell ctx={ctx}>
       <section className="card stack" style={{ maxWidth: 520, margin: "0 auto" }}>
         <Crest name={team.name} size={56} />
         <p className="muted small">Invitation til</p>

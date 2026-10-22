@@ -30,7 +30,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const pct = (n: number) => `${total ? (n / total) * 100 : 0}%`;
 
   return (
-    <Shell admin={ctx.adminClubs.size > 0}>
+    <Shell ctx={ctx}>
       <PageHead back={{ href: `/hold/${e.teamId}`, label: e.teamName }} />
       <ErrorBox message={fejl} />
 

@@ -1,21 +1,23 @@
 import Link from "next/link";
-import { listAdminClubs } from "../../services";
+import { listAdminClubs, listTreasurers } from "../../services";
 import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { Shell, ErrorBox } from "../../components/Shell";
-import { Crest, Icon, PageHead } from "../../components/ui";
-import { newTeam } from "../actions";
+import { Avatar, Crest, Icon, PageHead } from "../../components/ui";
+import { addTreasurer, newTeam, removeTreasurer } from "../actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function Club({ searchParams }: { searchParams: Promise<{ fejl?: string }> }) {
   const { fejl } = await searchParams;
   const { ctx } = await requireSession("/forening");
-  const clubs = await listAdminClubs(db, ctx);
-  if (clubs.length === 0) return <Shell>Kun foreningens administratorer har adgang her.</Shell>;
+  const clubs = await Promise.all(
+    (await listAdminClubs(db, ctx)).map(async (c) => ({ ...c, treasurers: await listTreasurers(db, ctx, c.id) })),
+  );
+  if (clubs.length === 0) return <Shell ctx={ctx}>Kun foreningens administratorer har adgang her.</Shell>;
 
   return (
-    <Shell active="/forening" admin>
+    <Shell active="/forening" ctx={ctx}>
       <ErrorBox message={fejl} />
       {clubs.map((c) => (
         <section key={c.id}>
@@ -57,6 +59,37 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
             </form>
             <p className="muted small">Træneren tilføjes bagefter på holdets side.</p>
           </details>
+
+          <section className="section" style={{ maxWidth: 560 }}>
+            <div className="section-head">
+              <h2>Kasserer</h2>
+            </div>
+            {c.treasurers.length > 0 ? (
+              <ul className="people">
+                {c.treasurers.map((t) => (
+                  <li key={t.profileId}>
+                    <Avatar name={`${t.firstName} ${t.lastName}`} />
+                    <span className="name grow">
+                      {t.firstName} {t.lastName}
+                    </span>
+                    <form action={removeTreasurer}>
+                      <input type="hidden" name="clubId" value={c.id} />
+                      <input type="hidden" name="profileId" value={t.profileId} />
+                      <button className="link small">Fjern</button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Ingen kasserer endnu. Administratorer kan selv håndtere kontingent under Kasse.</p>
+            )}
+            <form action={addTreasurer} className="inline">
+              <input type="hidden" name="clubId" value={c.id} />
+              <input type="email" name="email" required placeholder="Kassererens e-mail" />
+              <button>Tilføj</button>
+            </form>
+            <p className="muted small" style={{ marginTop: 6 }}>Kassereren får adgang til medlemmer, kontingent og betalinger, men ikke til hold og trænere.</p>
+          </section>
         </section>
       ))}
     </Shell>

@@ -24,7 +24,7 @@ export default async function Attendance({ params, searchParams }: { params: Pro
   const held = o.events.filter((e) => e.past).length;
 
   return (
-    <Shell admin={ctx.adminClubs.size > 0}>
+    <Shell ctx={ctx}>
       <PageHead
         back={{ href: `/hold/${id}`, label: team.name }}
         title="Fremmøde"

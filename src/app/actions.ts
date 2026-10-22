@@ -20,9 +20,28 @@ import {
   setEventCancelled,
   updateEvent,
   type EventInput,
+  cancelCharge,
+  completeCheckout,
+  connectPayments,
+  createFee,
+  createSingleCharge,
+  getCheckout,
+  grantTreasurerByEmail,
+  refundCharge,
+  registerManualPayment,
+  revokeTreasurer,
+  runCharges,
+  sendReminders,
+  setFeeArchived,
+  setTeamDefaultFee,
+  startCheckout,
+  updateFee,
+  updateMembership,
 } from "../services";
+import { parseKr, type FeeInterval } from "../lib/money";
+import { getPaymentProvider, mockPaymentsEnabled } from "../lib/payments";
 import { db } from "../lib/db";
-import { sendLoginMail } from "../lib/mail";
+import { sendLoginMail, sendMail } from "../lib/mail";
 import { endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
 import { parseLocalDateTime } from "../lib/time";
 
@@ -231,4 +250,153 @@ export async function cancelEvent(formData: FormData) {
   const scope = str(formData, "scope") === "following" ? "following" : "one";
   await attempt(`/aktivitet/${eventId}`, () => setEventCancelled(db, ctx, eventId, cancelled, scope));
   revalidatePath(`/aktivitet/${eventId}`);
+}
+
+// --- Forening: kasserer ---
+
+export async function addTreasurer(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/forening", () => grantTreasurerByEmail(db, ctx, str(formData, "clubId"), str(formData, "email")));
+  revalidatePath("/forening");
+}
+
+export async function removeTreasurer(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/forening", () => revokeTreasurer(db, ctx, str(formData, "clubId"), str(formData, "profileId")));
+  revalidatePath("/forening");
+}
+
+// --- Kasse ---
+
+/** Tilbage til samme side i kassen, med foreningen valgt. */
+const kasse = (f: FormData, path = "") => `/kasse${path}?klub=${encodeURIComponent(str(f, "clubId"))}`;
+
+export async function newFee(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = kasse(formData, "/kontingenter");
+  await attempt(back, () =>
+    createFee(db, ctx, str(formData, "clubId"), {
+      name: str(formData, "name"),
+      amountOre: parseKr(str(formData, "amount")),
+      interval: str(formData, "interval") as FeeInterval,
+    }),
+  );
+  revalidatePath("/kasse/kontingenter");
+}
+
+export async function editFee(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = kasse(formData, "/kontingenter");
+  await attempt(back, async () => {
+    const feeId = str(formData, "feeId");
+    if (formData.has("archive")) return setFeeArchived(db, ctx, feeId, str(formData, "archive") === "1");
+    await updateFee(db, ctx, feeId, {
+      name: str(formData, "name"),
+      amountOre: parseKr(str(formData, "amount")),
+      interval: str(formData, "interval") as FeeInterval,
+    });
+  });
+  revalidatePath("/kasse/kontingenter");
+}
+
+export async function teamFee(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/kontingenter"), () => setTeamDefaultFee(db, ctx, str(formData, "teamId"), opt(formData, "feeId")));
+  revalidatePath("/kasse/kontingenter");
+}
+
+export async function chargeFee(formData: FormData) {
+  const { ctx } = await requireSession();
+  let result = { created: 0, totalOre: 0 };
+  await attempt(kasse(formData, "/kontingenter"), async () => {
+    result = await runCharges(db, ctx, str(formData, "feeId"), str(formData, "period"), opt(formData, "dueDate") ?? undefined);
+  });
+  redirect(`${kasse(formData, "/opkraevninger")}&oprettet=${result.created}`);
+}
+
+export async function updateMember(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = safeNext(str(formData, "back"));
+  await attempt(back, () =>
+    updateMembership(db, ctx, str(formData, "clubId"), str(formData, "profileId"), {
+      feeId: formData.has("feeId") ? opt(formData, "feeId") : undefined,
+      exempt: formData.has("exemptField") ? formData.has("exempt") : undefined,
+      status: (opt(formData, "status") as "active" | "inactive" | null) ?? undefined,
+    }),
+  );
+  revalidatePath("/kasse/medlemmer");
+}
+
+export async function singleCharge(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = safeNext(str(formData, "back"));
+  await attempt(back, async () => {
+    const dueDate = str(formData, "dueDate");
+    if (!dueDate) throw new Error("Vælg en betalingsfrist");
+    await createSingleCharge(db, ctx, str(formData, "clubId"), str(formData, "profileId"), {
+      description: str(formData, "description"),
+      amountOre: parseKr(str(formData, "amount")),
+      dueDate,
+    });
+  });
+  revalidatePath("/kasse");
+}
+
+export async function chargeAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = safeNext(str(formData, "back"));
+  const chargeId = str(formData, "chargeId");
+  await attempt(back, async () => {
+    switch (str(formData, "do")) {
+      case "paid":
+        return registerManualPayment(db, ctx, chargeId, opt(formData, "note"));
+      case "cancel":
+        return cancelCharge(db, ctx, chargeId);
+      case "refund":
+        return refundCharge(db, ctx, chargeId, getPaymentProvider());
+    }
+  });
+  revalidatePath("/kasse");
+}
+
+export async function remind(formData: FormData) {
+  const { ctx } = await requireSession();
+  let r = { sent: 0, unreachable: [] as string[] };
+  await attempt(kasse(formData), async () => {
+    r = await sendReminders(db, ctx, str(formData, "clubId"), sendMail, await origin());
+  });
+  const missing = r.unreachable.length ? `&uden_mail=${encodeURIComponent(r.unreachable.join(", "))}` : "";
+  redirect(`${kasse(formData)}&rykkere=${r.sent}${missing}`);
+}
+
+export async function connectStripe(formData: FormData) {
+  const { ctx } = await requireSession();
+  let url = "";
+  await attempt(kasse(formData), async () => {
+    url = await connectPayments(db, ctx, str(formData, "clubId"), getPaymentProvider(), await origin());
+  });
+  redirect(url);
+}
+
+// --- Betaling ---
+
+export async function pay(formData: FormData) {
+  const { ctx } = await requireSession();
+  let url = "";
+  await attempt("/betaling", async () => {
+    url = await startCheckout(db, ctx, str(formData, "chargeId"), getPaymentProvider(), await origin());
+  });
+  redirect(url);
+}
+
+/** Kun testbetalingen: svarer til at Stripe bekræfter betalingen. */
+export async function completeTestPayment(formData: FormData) {
+  if (!mockPaymentsEnabled()) throw new Error("Testbetaling er slået fra");
+  const { ctx } = await requireSession();
+  const sessionId = str(formData, "session");
+  await attempt(`/betal/test/${sessionId}`, async () => {
+    await getCheckout(db, ctx, sessionId);
+    await completeCheckout(db, sessionId);
+  });
+  redirect(`/betaling/kvittering?session=${encodeURIComponent(sessionId)}`);
 }

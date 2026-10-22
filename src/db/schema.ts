@@ -18,12 +18,14 @@ import {
   uniqueIndex,
   uuid,
   index,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
-export const clubRole = pgEnum("club_role", ["admin"]);
+// admin = fuld adgang. treasurer = kasserer: medlemmer, kontingent og betalinger, intet andet.
+export const clubRole = pgEnum("club_role", ["admin", "treasurer"]);
 export const teamRole = pgEnum("team_role", ["coach", "player"]);
 export const membershipStatus = pgEnum("membership_status", ["active", "inactive", "waitlist"]);
 export const guardianRelation = pgEnum("guardian_relation", ["parent", "guardian"]);
@@ -107,6 +109,8 @@ export const clubs = pgTable("clubs", {
   id: id(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  // Foreningens egen Stripe-konto (Connect). Pengene går direkte til foreningen.
+  stripeAccountId: text("stripe_account_id"),
   createdAt: createdAt(),
 });
 
@@ -120,7 +124,12 @@ export const clubMemberships = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: "cascade" }),
     status: membershipStatus("status").notNull().default("active"),
+    // Kontingentet medlemmet betaler. Null = ikke tildelt endnu.
+    feeId: uuid("fee_id").references(() => membershipFees.id, { onDelete: "set null" }),
+    // Gratist: trænere, frivillige, pause. Får ingen opkrævninger.
+    exempt: boolean("exempt").notNull().default(false),
     joinedAt: createdAt(),
+    leftAt: timestamp("left_at", { withTimezone: true }),
   },
   (t) => [primaryKey({ columns: [t.clubId, t.profileId] }), index("club_memberships_profile_idx").on(t.profileId)],
 );
@@ -154,6 +163,8 @@ export const teams = pgTable(
     season: text("season"),
     // Kode til holdets invitationslink (/join/<kode>). Kan nulstilles af træner/admin.
     inviteCode: text("invite_code").notNull().unique(),
+    // Kontingent nye spillere får, når de kommer på holdet og ikke har et i forvejen.
+    defaultFeeId: uuid("default_fee_id").references(() => membershipFees.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
   (t) => [index("teams_club_idx").on(t.clubId)],
@@ -221,4 +232,85 @@ export const eventResponses = pgTable(
     respondedAt: timestamp("responded_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.eventId, t.profileId] })],
+);
+
+// --- Kontingent og betaling ---
+// Beløb er i øre, så der aldrig regnes med kommatal.
+
+export const feeInterval = pgEnum("fee_interval", ["month", "quarter", "half_year", "year"]);
+export const chargeStatus = pgEnum("charge_status", ["open", "paid", "cancelled", "refunded"]);
+export const paymentProvider = pgEnum("payment_provider", ["stripe", "mock", "manual"]);
+export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "refunded"]);
+
+// Kontingentsatser, fx "Børn under 13, 650 kr. pr. halvår".
+export const membershipFees = pgTable(
+  "membership_fees",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    amountOre: integer("amount_ore").notNull(),
+    interval: feeInterval("interval").notNull(),
+    // Arkiverede satser kan ikke vælges til nye medlemmer, men gamle opkrævninger bevares.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("membership_fees_club_idx").on(t.clubId)],
+);
+
+// Én opkrævning = ét medlem, én periode. Unik pr. medlem, sats og periode,
+// så en opkrævningskørsel kan køres igen uden dobbelte opkrævninger.
+export const charges = pgTable(
+  "charges",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    feeId: uuid("fee_id").references(() => membershipFees.id, { onDelete: "set null" }),
+    description: text("description").notNull(),
+    amountOre: integer("amount_ore").notNull(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    dueDate: date("due_date").notNull(),
+    status: chargeStatus("status").notNull().default("open"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
+    reminderCount: integer("reminder_count").notNull().default(0),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("charges_member_period_unique").on(t.profileId, t.feeId, t.periodStart),
+    index("charges_club_status_idx").on(t.clubId, t.status),
+  ],
+);
+
+// Betalingsforsøg og betalinger. Et kortforsøg der afbrydes, bliver stående som pending.
+export const payments = pgTable(
+  "payments",
+  {
+    id: id(),
+    chargeId: uuid("charge_id")
+      .notNull()
+      .references(() => charges.id, { onDelete: "cascade" }),
+    provider: paymentProvider("provider").notNull(),
+    // Stripe: Checkout Session id. Manuel: tom.
+    providerRef: text("provider_ref").unique(),
+    // Stripe: PaymentIntent id, som bruges til refundering.
+    providerPaymentId: text("provider_payment_id"),
+    amountOre: integer("amount_ore").notNull(),
+    status: paymentStatus("status").notNull().default("pending"),
+    note: text("note"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
+  },
+  (t) => [index("payments_charge_idx").on(t.chargeId)],
 );

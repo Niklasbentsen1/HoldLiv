@@ -22,7 +22,7 @@ export default async function Family({ searchParams }: { searchParams: Promise<{
   const kids = await listFamily(db, ctx);
 
   return (
-    <Shell active="/familie" admin={ctx.adminClubs.size > 0}>
+    <Shell active="/familie" ctx={ctx}>
       <PageHead title="Familie" sub="Børn har ikke eget login. Du melder til og fra for dem, og du kan skifte til dem på overblikket." />
       <ErrorBox message={fejl} />
       <div className="team-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", marginBottom: 20 }}>

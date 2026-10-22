@@ -81,7 +81,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ f
   const cd = next ? countdown(ctx.now, next.startsAt) : null;
 
   return (
-    <Shell active="/" admin={ctx.adminClubs.size > 0}>
+    <Shell active="/" ctx={ctx}>
       <div className="greeting">
         <div>
           <p className="today">{day(ctx.now)}</p>

@@ -4,21 +4,24 @@ import { eq } from "drizzle-orm";
 import { logout } from "../app/actions";
 import { profiles } from "../db/schema";
 import { db } from "../lib/db";
-import { getSession } from "../lib/session";
+import type { AccessContext } from "../auth/permissions";
 import { Avatar, AvatarStack, Icon, Ring, type IconName } from "./ui";
 
 export interface NavItem {
   href: string;
   label: string;
   icon: IconName;
-  adminOnly?: boolean;
+  /** Vises kun, hvis funktionen siger ja. */
+  show?: (ctx: AccessContext) => boolean;
 }
 
 /** Hovedmenuen. Nye områder (fx Medlemmer, Kontingent) tilføjes her. */
 export const NAV: NavItem[] = [
   { href: "/", label: "Overblik", icon: "home" },
   { href: "/familie", label: "Familie", icon: "family" },
-  { href: "/forening", label: "Forening", icon: "club", adminOnly: true },
+  { href: "/betaling", label: "Betaling", icon: "card" },
+  { href: "/forening", label: "Forening", icon: "club", show: (ctx) => ctx.adminClubs.size > 0 },
+  { href: "/kasse", label: "Kasse", icon: "coins", show: (ctx) => ctx.adminClubs.size > 0 || ctx.treasurerClubs.size > 0 },
 ];
 
 function Logo() {
@@ -34,13 +37,10 @@ function Logo() {
   );
 }
 
-export async function Shell({ children, admin, active }: { children: ReactNode; admin?: boolean; active?: string }) {
-  const session = await getSession();
-  const [me] = session
-    ? await db.select({ firstName: profiles.firstName, lastName: profiles.lastName }).from(profiles).where(eq(profiles.id, session.ctx.profileId))
-    : [];
+export async function Shell({ children, ctx, active }: { children: ReactNode; ctx: AccessContext; active?: string }) {
+  const [me] = await db.select({ firstName: profiles.firstName, lastName: profiles.lastName }).from(profiles).where(eq(profiles.id, ctx.profileId));
   const name = me ? `${me.firstName} ${me.lastName}` : "";
-  const nav = NAV.filter((n) => !n.adminOnly || admin);
+  const nav = NAV.filter((n) => !n.show || n.show(ctx));
 
   return (
     <div className="app">

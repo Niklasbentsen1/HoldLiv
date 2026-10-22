@@ -1,12 +1,26 @@
 // Hold, familie og forening: hvem er på hvilke hold, invitationslinks og børneprofiler.
 import { randomBytes } from "node:crypto";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { clubMemberships, clubs, guardianships, profiles, teamMembers, teams, users } from "../db/schema";
 import { assertCan, can, canActAs, type AccessContext } from "../auth/permissions";
 import { loadProfileFacts, loadTeamFacts, loadTeamMemberIds } from "../auth/context";
 
 export const newInviteCode = () => randomBytes(6).toString("base64url");
+
+/** Ny spiller uden kontingent får holdets standardkontingent. Et kontingent sat af kassereren røres ikke. */
+export async function applyTeamDefaultFee(db: Pick<Db, "update">, teamId: string, profileId: string) {
+  await db
+    .update(clubMemberships)
+    .set({ feeId: sql`(select ${teams.defaultFeeId} from ${teams} where ${teams.id} = ${teamId})` })
+    .where(
+      and(
+        eq(clubMemberships.profileId, profileId),
+        isNull(clubMemberships.feeId),
+        eq(clubMemberships.clubId, sql`(select ${teams.clubId} from ${teams} where ${teams.id} = ${teamId})`),
+      ),
+    );
+}
 
 const ROLE_LABEL = { coach: "Træner", player: "Spiller" } as const;
 
@@ -137,6 +151,7 @@ export async function joinTeamByInvite(db: Db, ctx: AccessContext, code: string,
   await db.transaction(async (tx) => {
     await tx.insert(clubMemberships).values({ clubId: team.clubId, profileId }).onConflictDoNothing();
     await tx.insert(teamMembers).values({ teamId: team.id, profileId, role: "player" }).onConflictDoNothing();
+    await applyTeamDefaultFee(tx, team.id, profileId);
   });
   return team;
 }

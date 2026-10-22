@@ -25,7 +25,7 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
   const next = events.find((e) => !e.cancelledAt);
 
   return (
-    <Shell admin={ctx.adminClubs.size > 0}>
+    <Shell ctx={ctx}>
       <PageHead
         back={{ href: "/", label: "Overblik" }}
         title={
