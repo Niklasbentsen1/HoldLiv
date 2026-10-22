@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testDb } from "./db";
 import { seedDemo } from "../src/db/demo";
 import { loadAccessContext } from "../src/auth/context";
-import { addClubMember, registerUser, createPost, deletePost, listFeed, listPostTargets, setPostPinned, type Deliver } from "../src/services";
+import { addClubMember, grantClubAdmin, registerUser, createPost, deletePost, listFeed, listPostTargets, setPostPinned, type Deliver } from "../src/services";
 
 const { db, sql, reset } = testDb();
 let demo: Awaited<ReturnType<typeof seedDemo>>;
@@ -89,7 +89,20 @@ describe("børn med eget login", () => {
       await addClubMember(db, karen, demo.club.id, u.profile.id);
       const ctx = await loadAccessContext(db, u.user.id);
       await expect(createPost(db, ctx, deliver, { kind: "board", scope: club(), title: "Hej", body: "Hej" })).rejects.toThrow(/Kun voksne/);
+      expect(await listPostTargets(db, ctx, "board")).toEqual([]);
     }
+  });
+});
+
+describe("ledelsen uden fødselsdato", () => {
+  it("kan stadig skrive nyheder", async () => {
+    const karen = await ctxOf("karen");
+    const u = await registerUser(db, "nobd-admin@holdliv.test", { firstName: "Admin", lastName: "Uden" });
+    await grantClubAdmin(db, karen, demo.club.id, u.profile.id);
+    const ctx = await loadAccessContext(db, u.user.id);
+    expect((await listPostTargets(db, ctx, "news")).length).toBeGreaterThan(0);
+    await createPost(db, ctx, deliver, { kind: "news", scope: club(), title: "Fra ny admin", body: "Hej" });
+    expect(await titles("karen", "news")).toContain("Fra ny admin");
   });
 });
 
