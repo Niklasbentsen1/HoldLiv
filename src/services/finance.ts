@@ -34,7 +34,7 @@ export async function listFinanceClubs(db: Db, ctx: AccessContext) {
   const ids = financeClubIds(ctx);
   if (ids.length === 0) return [];
   const rows = await db
-    .select({ id: clubs.id, name: clubs.name, stripeAccountId: clubs.stripeAccountId, arrearsBlockDays: clubs.arrearsBlockDays })
+    .select({ id: clubs.id, name: clubs.name, stripeAccountId: clubs.stripeAccountId, arrearsBlockDays: clubs.arrearsBlockDays, autoChargeEnabled: clubs.autoChargeEnabled })
     .from(clubs)
     .where(inArray(clubs.id, ids))
     .orderBy(asc(clubs.name));
@@ -723,6 +723,8 @@ export async function listMyCharges(db: Db, ctx: AccessContext) {
       dueDate: charges.dueDate,
       status: charges.status,
       paidAt: charges.paidAt,
+      clubId: charges.clubId,
+      autoChargeEnabled: clubs.autoChargeEnabled,
     })
     .from(charges)
     .innerJoin(profiles, eq(profiles.id, charges.profileId))
@@ -734,15 +736,18 @@ export async function listMyCharges(db: Db, ctx: AccessContext) {
 }
 
 /** Starter en betaling og giver adressen, medlemmet skal sendes videre til. */
-export async function startCheckout(db: Db, ctx: AccessContext, chargeId: string, provider: PaymentProvider, baseUrl: string) {
+export async function startCheckout(db: Db, ctx: AccessContext, chargeId: string, provider: PaymentProvider, baseUrl: string, opts: { saveCard?: boolean } = {}) {
   const charge = await loadCharge(db, chargeId);
   assertCan(ctx, { action: "charge.pay", profileId: charge.profileId });
   if (charge.status !== "open") throw new Error("Opkrævningen er allerede betalt eller annulleret");
   const [[club], [me]] = await Promise.all([
-    db.select({ name: clubs.name, account: clubs.stripeAccountId }).from(clubs).where(eq(clubs.id, charge.clubId)),
+    db.select({ name: clubs.name, account: clubs.stripeAccountId, autoCharge: clubs.autoChargeEnabled }).from(clubs).where(eq(clubs.id, charge.clubId)),
     db.select({ email: users.email }).from(users).where(eq(users.id, ctx.userId)),
   ]);
+  // Kortet gemmes kun, hvis foreningen har tilladt det, og betaleren selv har sagt ja.
+  const saveCard = !!opts.saveCard && club.autoCharge;
   const session = await provider.createCheckout({
+    saveCard,
     chargeId,
     amountOre: charge.amountOre,
     description: `${club.name}: ${charge.description}`,
@@ -755,6 +760,7 @@ export async function startCheckout(db: Db, ctx: AccessContext, chargeId: string
     provider: provider.name,
     providerRef: session.sessionId,
     amountOre: charge.amountOre,
+    saveCard,
     createdByUserId: ctx.userId,
   });
   return session.url;

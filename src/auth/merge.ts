@@ -21,6 +21,7 @@ const BLOCKING: [string, string][] = [
   ["chat_messages", "author_profile_id"],
   ["posts", "author_profile_id"],
   ["consents", "profile_id"],
+  ["saved_cards", "payer_profile_id"],
 ];
 
 export async function mergeProfile(db: Db, keepId: string, dupId: string): Promise<boolean> {

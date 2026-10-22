@@ -1,4 +1,4 @@
-import { listMyCharges } from "../../services";
+import { listMyCharges, listMySavedCards } from "../../services";
 import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { kr, localDate, longDate } from "../../lib/money";
@@ -6,7 +6,7 @@ import { mockPaymentsEnabled } from "../../lib/payments";
 import { ErrorBox, Shell } from "../../components/Shell";
 import { ChargeTag } from "../../components/Kasse";
 import { PageHead } from "../../components/ui";
-import { pay } from "../actions";
+import { pay, removeCardAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,7 @@ export default async function Payments({ searchParams }: { searchParams: Promise
   const { fejl } = await searchParams;
   const { ctx } = await requireSession("/betaling");
   const { open, done } = await listMyCharges(db, ctx);
+  const cards = await listMySavedCards(db, ctx);
   const many = ctx.wards.size > 0;
 
   return (
@@ -38,8 +39,13 @@ export default async function Payments({ searchParams }: { searchParams: Promise
               <span className="amount">{kr(c.amountOre)}</span>
             </div>
             <div className="muted small">Betal senest {longDate(c.dueDate)}</div>
-            <form action={pay}>
+            <form action={pay} className="stack">
               <input type="hidden" name="chargeId" value={c.id} />
+              {c.autoChargeEnabled && (
+                <label className="small">
+                  <input name="saveCard" type="checkbox" /> Husk kortet, så ubetalte og fremtidige opkrævninger trækkes automatisk, når de er forfaldne
+                </label>
+              )}
               <button className="primary">Betal {kr(c.amountOre)}</button>
             </form>
           </li>
@@ -47,6 +53,26 @@ export default async function Payments({ searchParams }: { searchParams: Promise
       </ul>
       {open.length > 0 && <p className="muted small">Du betaler med kort, MobilePay eller Apple Pay. Pengene går direkte til foreningen.</p>}
       {mockPaymentsEnabled() && open.length > 0 && <p className="test-banner">Testtilstand: der trækkes ingen rigtige penge.</p>}
+
+      {cards.length > 0 && (
+        <>
+          <h2>Gemte kort</h2>
+          <ul className="people">
+            {cards.map((k) => (
+              <li key={k.id} className="spread">
+                <span className="grow">
+                  {k.clubName}: {k.brand ?? "Kort"} ••••{k.last4 ?? "????"}
+                  <span className="muted small block">Forfaldne opkrævninger trækkes automatisk. Du får besked hver gang.</span>
+                </span>
+                <form action={removeCardAction}>
+                  <input type="hidden" name="cardId" value={k.id} />
+                  <button>Fjern</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       {done.length > 0 && (
         <>

@@ -11,7 +11,7 @@ import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { deviceTokens, eventResponses, events, guardianships, notificationPrefs, notifications, profiles, pushSubscriptions, sessions, teamMembers, teams, users } from "../db/schema";
 import { isMinor, type AccessContext } from "../auth/permissions";
-import { CHANNELS, KINDS, defaultEnabled, type Channel, type Kind } from "../lib/notify";
+import { CHANNELS, KINDS, defaultEnabled, isMandatory, type Channel, type Kind } from "../lib/notify";
 import { normalizePhone, type SmsSender } from "../lib/sms";
 import type { Mailer } from "../lib/mail";
 import { PushGoneError, type PushSender } from "../lib/push";
@@ -134,7 +134,7 @@ export async function notifyUsers(db: Db, deliver: Deliver, recipients: Recipien
 
   for (const r of recipients) {
     for (const channel of CHANNELS) {
-      const enabled = prefsRows.find((p) => p.userId === r.userId && p.channel === channel)?.enabled ?? defaultEnabled(msg.kind, channel);
+      const enabled = isMandatory(msg.kind, channel) || (prefsRows.find((p) => p.userId === r.userId && p.channel === channel)?.enabled ?? defaultEnabled(msg.kind, channel));
       if (!enabled) continue;
       const userSubs = channel === "push" ? subs.filter((x) => x.userId === r.userId) : [];
       const userDevices = channel === "push" ? devices.filter((x) => x.userId === r.userId) : [];

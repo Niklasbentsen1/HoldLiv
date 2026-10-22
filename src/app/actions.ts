@@ -52,6 +52,9 @@ import {
   type EventInput,
   cancelCharge,
   completeCheckout,
+  saveCardFromCheckout,
+  removeSavedCard,
+  setAutoCharge,
   connectPayments,
   createFee,
   setArrearsBlock,
@@ -119,6 +122,14 @@ async function attempt(back: string, fn: () => Promise<unknown>) {
       e instanceof ForbiddenError ? "Det har du ikke adgang til." : e instanceof Error && !technical ? e.message : "Noget gik galt.";
     if (!(e instanceof ForbiddenError || e instanceof LoginError || e instanceof MfaError)) console.error(e);
     redirect(`${back}${back.includes("?") ? "&" : "?"}fejl=${encodeURIComponent(message)}`);
+  }
+}
+
+function paymentProviderOrUndefined() {
+  try {
+    return getPaymentProvider();
+  } catch {
+    return undefined;
   }
 }
 
@@ -353,7 +364,7 @@ export async function saveConsent(formData: FormData) {
 
 export async function deleteAccountAction(formData: FormData) {
   const { ctx } = await requireSession();
-  await attempt("/indstillinger/privatliv", () => deleteMyAccount(db, ctx, str(formData, "email")));
+  await attempt("/indstillinger/privatliv", () => deleteMyAccount(db, ctx, str(formData, "email"), paymentProviderOrUndefined()));
   await endSession();
   redirect("/login?fejl=" + encodeURIComponent("Din konto og dine oplysninger er slettet."));
 }
@@ -821,9 +832,20 @@ export async function pay(formData: FormData) {
   const { ctx } = await requireSession();
   let url = "";
   await attempt("/betaling", async () => {
-    url = await startCheckout(db, ctx, str(formData, "chargeId"), getPaymentProvider(), await origin());
+    url = await startCheckout(db, ctx, str(formData, "chargeId"), getPaymentProvider(), await origin(), { saveCard: formData.get("saveCard") === "on" });
   });
   redirect(url);
+}
+
+export async function removeCardAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/betaling", () => removeSavedCard(db, ctx, str(formData, "cardId"), getPaymentProvider()));
+  redirect("/betaling");
+}
+
+export async function saveAutoCharge(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/kontingenter"), () => setAutoCharge(db, ctx, str(formData, "clubId"), formData.get("enabled") === "on"));
 }
 
 /** Kun testbetalingen: svarer til at Stripe bekræfter betalingen. */
@@ -834,6 +856,7 @@ export async function completeTestPayment(formData: FormData) {
   await attempt(`/betal/test/${sessionId}`, async () => {
     await getCheckout(db, ctx, sessionId);
     await completeCheckout(db, sessionId);
+    await saveCardFromCheckout(db, getPaymentProvider(), sessionId);
   });
   redirect(`/betaling/kvittering?session=${encodeURIComponent(sessionId)}`);
 }
