@@ -253,7 +253,7 @@ describe("påmindelser om ubesvarede aktiviteter", () => {
     const first = await sendUnansweredReminders(db, deliver, at(-20));
     const toNiklas = matchMails().filter((m) => m.to === mailOf("niklas"));
     expect(toNiklas).toHaveLength(1);
-    expect(toNiklas[0].subject).toMatch(/^Husk at svare: Kamp: Kamp mod Bryrup IF, U9 piger/);
+    expect(toNiklas[0].subject).toMatch(/^Husk at svare: Kamp mod Bryrup IF, U9 piger/);
     expect(toNiklas[0].text).toContain("Emma");
     expect(first.sent).toBe(matchMails().length + mails.filter((m) => !m.subject.includes("Bryrup")).length);
     const count = mails.length;
