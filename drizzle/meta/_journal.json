@@ -92,6 +92,13 @@
       "when": 1792675841884,
       "tag": "0012_holdchat",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792676812098,
+      "tag": "0013_nyheder",
+      "breakpoints": true
     }
   ]
 }

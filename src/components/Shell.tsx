@@ -19,6 +19,7 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   { href: "/", label: "Overblik", icon: "home" },
   { href: "/familie", label: "Familie", icon: "family" },
+  { href: "/nyheder", label: "Nyheder", icon: "star" },
   { href: "/betaling", label: "Betaling", icon: "card" },
   { href: "/indstillinger", label: "Beskeder", icon: "bell" },
   { href: "/forening", label: "Forening", icon: "club", show: (ctx) => ctx.adminClubs.size > 0 },

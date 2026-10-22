@@ -604,3 +604,34 @@ export const chatReads = pgTable(
   },
   (t) => [primaryKey({ columns: [t.threadId, t.userId] })],
 );
+
+// --- Nyheder og opslagstavle ---
+// Et opslag hører til hele foreningen (team_id er tom) eller til ét hold. Nyheder skrives af ledelsen
+// (admin for foreningen, trænere for holdet); opslagstavlen er åben for alle, der hører til, og opslag udløber.
+
+export const postKind = pgEnum("post_kind", ["news", "board"]);
+
+export const posts = pgTable(
+  "posts",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+    kind: postKind("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    pinned: boolean("pinned").notNull().default(false),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    authorProfileId: uuid("author_profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [index("posts_club_idx").on(t.clubId, t.createdAt), index("posts_team_idx").on(t.teamId, t.createdAt)],
+);

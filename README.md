@@ -144,6 +144,8 @@ Miljøvariabler: `DATABASE_URL`, `RESEND_API_KEY` og `MAIL_FROM` (rigtige mails)
 
 Beskeder: ændringer og aflysninger af aktiviteter sendes som mail (og SMS, hvis man har valgt det) til spilleren selv og til forældre til børn under 18. Hver person vælger kanaler under `/indstillinger`. Holdchat er et modul, foreningen slår til pr. hold. Grupperne (hele holdet, trænere, trænere og forældre) og aktivitetens egen chat regnes automatisk ud fra holdets trænere, spillere og forældre. Børn har intet login og er aldrig med; foreningens admin er ikke med automatisk. Nye beskeder giver push (mail er fra som standard), højst én pr. samtale hvert tiende minut.
 
+Nyheder og opslagstavle (`/nyheder`): ledelsen (foreningens admin, holdets trænere) skriver nyheder til hele foreningen eller ét hold, og medlemmerne får besked. Alle, der hører til (også forældre), kan hænge opslag op på opslagstavlen; de udløber af sig selv (30 dage som standard) og giver ingen besked.
+
 Påmindelser om ubesvarede aktiviteter sendes et døgn før svarfristen (eller før starten) af `GET/POST /api/cron/paaminde` med `Authorization: Bearer $CRON_SECRET`; kald den fx hvert kvarter, hver besked sendes kun én gang. Alle forsøg gemmes i tabellen `notifications`, og en fejl hos udbyderen afviser aldrig selve ændringen.
 
 ## Ikke med endnu
