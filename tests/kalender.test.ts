@@ -21,7 +21,7 @@ const BASE = "https://holdliv.test";
 describe("iCalendar", () => {
   it("formaterer tid i UTC og escaper tekst", () => {
     expect(icsDate(new Date("2026-10-22T14:30:05Z"))).toBe("20261022T143005Z");
-    expect(icsEscape("Bane 1, ude; ring\nTak")).toBe("Bane 1\\, ude\; ring\\nTak");
+    expect(icsEscape("Bane 1, ude; ring\nTak")).toBe("Bane 1\\, ude\\; ring\\nTak");
   });
 
   it("folder lange linjer uden at skille tegn ad og bevarer indholdet", () => {
@@ -38,6 +38,8 @@ describe("iCalendar", () => {
     expect(ics).toContain("STATUS:CANCELLED");
     expect(ics).toContain("SUMMARY:AFLYST: U9: Kamp");
     expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
+    const withPlace = buildCalendar("T", [{ uid: "b@holdliv", start: t, end: t, stamp: t, summary: "x", location: "Hal 2; indgang B, bag skolen" }]);
+    expect(withPlace).toContain("LOCATION:Hal 2\\; indgang B\\, bag skolen");
   });
 });
 
