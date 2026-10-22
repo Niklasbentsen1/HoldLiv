@@ -1,10 +1,10 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { canActAs, ForbiddenError } from "../auth/permissions";
-import { LoginError, requestLogin, verifyCode } from "../auth/login";
+import { LoginError, requestLogin, sha256, verifyCode } from "../auth/login";
 import {
   addCoachByEmail,
   addGuardianByEmail,
@@ -18,6 +18,8 @@ import {
   respondToEvent,
   rotateInviteCode,
   setEventCancelledNotifying,
+  removePushSubscription,
+  savePushSubscription,
   setNotificationPref,
   updateEventNotifying,
   updateMyPhone,
@@ -68,8 +70,9 @@ import { getPaymentProvider, mockPaymentsEnabled } from "../lib/payments";
 import { db } from "../lib/db";
 import { sendLoginMail, sendMail } from "../lib/mail";
 import { CHANNELS, KINDS } from "../lib/notify";
+import { getPushSender } from "../lib/push";
 import { getSmsSender } from "../lib/sms";
-import { endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
+import { SESSION_COOKIE, endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
 import { parseLocalDateTime } from "../lib/time";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -88,7 +91,7 @@ async function attempt(back: string, fn: () => Promise<unknown>) {
 }
 
 async function deliverFromEnv() {
-  return { mail: sendMail, sms: getSmsSender(), baseUrl: await origin() };
+  return { mail: sendMail, sms: getSmsSender(), push: getPushSender(), baseUrl: await origin() };
 }
 
 // --- Login ---
@@ -558,4 +561,18 @@ export async function saveNotificationPrefs(formData: FormData) {
     }
   });
   redirect("/indstillinger?gemt=1");
+}
+
+export async function subscribePush(sub: { endpoint: string; p256dh: string; auth: string }) {
+  const { ctx } = await requireSession();
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) throw new Error("Du er ikke logget ind.");
+  await savePushSubscription(db, ctx, sha256(token), sub);
+  revalidatePath("/indstillinger");
+}
+
+export async function unsubscribePush(endpoint: string) {
+  const { ctx } = await requireSession();
+  await removePushSubscription(db, ctx, endpoint);
+  revalidatePath("/indstillinger");
 }

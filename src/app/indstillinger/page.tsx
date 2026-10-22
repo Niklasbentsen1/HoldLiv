@@ -5,6 +5,8 @@ import { CHANNELS, CHANNEL_LABEL, KINDS } from "../../lib/notify";
 import { Shell, ErrorBox } from "../../components/Shell";
 import { Empty, PageHead } from "../../components/ui";
 import { saveNotificationPrefs } from "../actions";
+import { vapidPublicKey } from "../../lib/push";
+import { PushToggle } from "./PushToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,10 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       <PageHead title="Beskeder" sub="Vælg, hvordan du vil have besked om ændringer og aflysninger. Du får også beskeder om dine børn." />
       <ErrorBox message={fejl} />
       {gemt && <p className="pill">Gemt</p>}
+      <section className="card stack" style={{ marginBottom: 20 }}>
+        <h2 className="section-head">Push i denne browser</h2>
+        <PushToggle publicKey={vapidPublicKey()} />
+      </section>
       <form action={saveNotificationPrefs} className="card stack" style={{ marginBottom: 20 }}>
         <label className="field">
           <span>Mobilnummer (til SMS)</span>

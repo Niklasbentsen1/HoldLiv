@@ -5,13 +5,17 @@ import { testDb } from "./db";
 import { seedDemo } from "../src/db/demo";
 import { loadAccessContext } from "../src/auth/context";
 import { ForbiddenError } from "../src/auth/permissions";
-import { notificationPrefs, notifications } from "../src/db/schema";
+import { notificationPrefs, notifications, pushSubscriptions } from "../src/db/schema";
 import { normalizePhone } from "../src/lib/sms";
+import { createSession, deleteSession, sha256 } from "../src/auth/login";
+import { PushGoneError } from "../src/lib/push";
 import {
   getNotificationPrefs,
   listMyNotifications,
   notifyUsers,
   recipientsOfPlayers,
+  removePushSubscription,
+  savePushSubscription,
   sendUnansweredReminders,
   setEventCancelledNotifying,
   setNotificationPref,
@@ -24,6 +28,7 @@ let demo: Awaited<ReturnType<typeof seedDemo>>;
 
 const mails: { to: string; subject: string; text: string }[] = [];
 const texts: { to: string; text: string }[] = [];
+const pushes: { to: string; payload: { title: string; body: string; url: string } }[] = [];
 let failMailFor: string | null = null;
 const deliver: Deliver = {
   baseUrl: "https://holdliv.test",
@@ -33,6 +38,11 @@ const deliver: Deliver = {
   },
   sms: async (to, text) => {
     texts.push({ to, text });
+  },
+  push: async (to, payload) => {
+    if (to.endpoint.includes("gone")) throw new PushGoneError("væk");
+    if (to.endpoint.includes("broken")) throw new Error("push-tjenesten er nede");
+    pushes.push({ to: to.endpoint, payload: JSON.parse(payload) });
   },
 };
 
@@ -44,10 +54,12 @@ afterAll(async () => {
   await sql.end();
 });
 beforeEach(async () => {
+  await db.delete(pushSubscriptions);
   await db.delete(notificationPrefs);
   await db.delete(notifications);
   mails.length = 0;
   texts.length = 0;
+  pushes.length = 0;
   failMailFor = null;
 });
 
@@ -119,7 +131,7 @@ describe("ændringer", () => {
 describe("kanaler", () => {
   it("SMS er opt-in og kræver et gyldigt mobilnummer", async () => {
     const sofie = await ctxOf("sofie");
-    expect((await getNotificationPrefs(db, sofie.userId)).prefs.event_change).toEqual({ mail: true, sms: false });
+    expect((await getNotificationPrefs(db, sofie.userId)).prefs.event_change).toEqual({ mail: true, push: true, sms: false });
     await sql`update profiles set phone = 'ring til mig' where id = ${demo.users.sofie.profile.id}`;
     await expect(setNotificationPref(db, sofie, "event_change", "sms", true)).rejects.toThrow(/mobilnummer/);
     await sql`update profiles set phone = '30 12 34 56' where id = ${demo.users.sofie.profile.id}`;
@@ -281,5 +293,72 @@ describe("påmindelser om ubesvarede aktiviteter", () => {
       select ${match().id}, p.id, 'yes', ${demo.users.niklas.user.id} from profiles p where p.first_name = 'Emma'`;
     await sendUnansweredReminders(db, deliver, at(-5));
     expect(matchMails().map((m) => m.to)).not.toContain(mailOf("niklas"));
+  });
+});
+
+describe("push i browseren", () => {
+  const tokens = new Map<string, string>();
+  /** Abonnementet hører til en session, som i appen. */
+  const save = async (who: keyof typeof demo.users, name: string) => {
+    const { token } = await createSession(db, demo.users[who].user.id);
+    tokens.set(`${who}:${name}`, token);
+    await savePushSubscription(db, await ctxOf(who), sha256(token), sub(name));
+    return token;
+  };
+  const sub = (name: string) => ({ endpoint: `https://push.test/${name}`, p256dh: "k", auth: "a" });
+  const change = async () => updateEventNotifying(db, await ctxOf("mette"), deliver, training().id, { location: `Bane ${Math.random()}` });
+
+  it("sender kun til logins med et abonnement og ingen post for de andre", async () => {
+    await save("ali", "ali-telefon");
+    await save("ali", "ali-pc");
+    await change();
+    expect(pushes.map((p) => p.to).sort()).toEqual(["https://push.test/ali-pc", "https://push.test/ali-telefon"]);
+    expect(pushes[0].payload.url).toBe(`/aktivitet/${training().id}`);
+    const rows = await sql`select user_id from notifications where channel = 'push'`;
+    expect(rows).toHaveLength(1); // én post pr. login, ikke pr. browser
+  });
+
+  it("følger kanalvalget, og et nægtet abonnement ryddes væk", async () => {
+    await save("sofie", "sofie-gone");
+    await change();
+    expect(pushes.map((p) => p.to)).not.toContain("https://push.test/sofie-gone");
+    expect(await sql`select 1 from push_subscriptions where endpoint = 'https://push.test/sofie-gone'`).toHaveLength(0);
+    await setNotificationPref(db, await ctxOf("ali"), "event_change", "push", false);
+    await change();
+    expect(pushes).toEqual([]);
+  });
+
+  it("en fejl hos push-tjenesten afviser ikke ændringen og noteres som fejlet", async () => {
+    await save("anne", "anne-broken");
+    const e = await change();
+    expect(e.location).toMatch(/^Bane /);
+    const [row] = await sql`select status from notifications where channel = 'push' and user_id = ${demo.users.anne.user.id}`;
+    expect(row.status).toBe("failed");
+  });
+
+  it("logger man ud eller udløber sessionen, holder push op", async () => {
+    const out = await save("ali", "ali-udlogget");
+    const expired = await save("anne", "anne-udloebet");
+    await save("sofie", "sofie-aktiv");
+    await deleteSession(db, out);
+    await sql`update sessions set expires_at = now() - interval '1 minute' where id = ${sha256(expired)}`;
+    await change();
+    expect(pushes.map((p) => p.to)).toEqual(["https://push.test/sofie-aktiv"]);
+    expect(await sql`select 1 from push_subscriptions where endpoint = 'https://push.test/ali-udlogget'`).toHaveLength(0);
+  });
+
+  it("uden push-udbyder springes over, og man kan afmelde og skifte login", async () => {
+    await sql`delete from push_subscriptions`;
+    await save("ali", "delt");
+    await save("anne", "delt");
+    expect(await sql`select user_id from push_subscriptions where endpoint = 'https://push.test/delt'`).toEqual([{ user_id: demo.users.anne.user.id }]);
+    await updateEventNotifying(db, await ctxOf("mette"), { ...deliver, push: null }, training().id, { location: "Bane X" });
+    const [row] = await sql`select status, error from notifications where channel = 'push'`;
+    expect(row).toMatchObject({ status: "skipped", error: "Push er ikke sat op" });
+    await removePushSubscription(db, await ctxOf("ali"), "https://push.test/delt"); // ikke hendes: rører intet
+    expect(await sql`select 1 from push_subscriptions`).toHaveLength(1);
+    await removePushSubscription(db, await ctxOf("anne"), "https://push.test/delt");
+    expect(await sql`select 1 from push_subscriptions`).toHaveLength(0);
+    await expect(savePushSubscription(db, await ctxOf("ali"), "x", { endpoint: "http://x", p256dh: "k", auth: "a" })).rejects.toThrow(/ugyldigt/);
   });
 });

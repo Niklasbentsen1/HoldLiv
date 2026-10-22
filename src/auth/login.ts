@@ -18,7 +18,7 @@ export class LoginError extends Error {
   }
 }
 
-const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+export const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const codeHash = (email: string, code: string) => sha256(`${email}:${code}`);
 
 export function normalizeEmail(email: string): string {
