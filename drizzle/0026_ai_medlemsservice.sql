@@ -1,0 +1,1 @@
+ALTER TABLE "clubs" ADD COLUMN "ai_service_enabled" boolean DEFAULT false NOT NULL;

@@ -183,6 +183,13 @@
       "when": 1792696783202,
       "tag": "0025_camps",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792707740973,
+      "tag": "0026_ai_medlemsservice",
+      "breakpoints": true
     }
   ]
 }

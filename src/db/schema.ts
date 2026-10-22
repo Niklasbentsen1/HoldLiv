@@ -186,6 +186,8 @@ export const clubs = pgTable("clubs", {
   autoChargeEnabled: boolean("auto_charge_enabled").notNull().default(false),
   // Foreningens egen kilometersats til kørselsgodtgørelse, i øre pr. km. Null = kørsel kan ikke indberettes. HoldLiv fastsætter ingen sats.
   mileageRateOrePerKm: integer("mileage_rate_ore_per_km"),
+  // Foreningen tillader AI-medlemsservice (svar til medlemmer ud fra deres egne oplysninger). Slået fra som standard.
+  aiServiceEnabled: boolean("ai_service_enabled").notNull().default(false),
   createdAt: createdAt(),
 });
 

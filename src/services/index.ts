@@ -288,6 +288,7 @@ export * from "./autocharge";
 export * from "./expenses";
 export * from "./camps";
 export * from "./memberStats";
+export * from "./memberService";
 export * from "./modules";
 export * from "./carpool";
 export * from "./tasks";

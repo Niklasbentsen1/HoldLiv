@@ -233,6 +233,7 @@ export async function listAdminClubs(db: Db, ctx: AccessContext) {
   return clubRows.map((c) => ({
     id: c.id,
     name: c.name,
+    aiServiceEnabled: c.aiServiceEnabled,
     teams: teamRows
       .filter((t) => t.clubId === c.id)
       .map((t) => ({

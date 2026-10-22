@@ -42,6 +42,7 @@ export const PRIVACY_VERSION = "2026-10-udkast";
 
 export const CONSENT_KINDS = {
   privacy: { label: "Privatlivspolitik", description: "Jeg har læst og accepterer, hvordan HoldLiv og foreningen behandler oplysninger.", required: true },
+  ai_service: { label: "AI-hjælp med mine oplysninger", description: "Jeg vil gerne have svar fra AI-medlemsservicen. Mine og mine børns oplysninger om aktiviteter og betalinger sendes (uden navne) til AI-udbyderen for at lave svaret.", required: false },
   photos: { label: "Billeder og video", description: "Foreningen må bruge billeder og video, hvor personen kan genkendes, fx på hjemmesiden og sociale medier.", required: false },
 } as const;
 export type ConsentKind = keyof typeof CONSENT_KINDS;
