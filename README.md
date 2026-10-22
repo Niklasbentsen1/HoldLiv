@@ -140,7 +140,9 @@ npm run dev                   # http://localhost:3000
 npm test                      # kræver en tom testdatabase, se TEST_DATABASE_URL i tests/db.ts
 ```
 
-Miljøvariabler: `DATABASE_URL`, `RESEND_API_KEY` og `MAIL_FROM` (rigtige mails), `APP_URL` (adressen i login-links), `DEMO_LOGIN=1` (demo-login, kode på skærmen og testbetaling i produktion), `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET` (rigtige betalinger).
+Miljøvariabler: `DATABASE_URL`, `RESEND_API_KEY` og `MAIL_FROM` (rigtige mails), `APP_URL` (adressen i login-links), `DEMO_LOGIN=1` (demo-login, kode på skærmen og testbetaling i produktion), `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET` (rigtige betalinger), `SMS_PROVIDER=mock` (SMS skrives i loggen i stedet for at blive sendt; uden udbyder springes SMS over i produktion).
+
+Beskeder: ændringer og aflysninger af aktiviteter sendes som mail (og SMS, hvis man har valgt det) til spilleren selv og til forældre til børn under 18. Hver person vælger kanaler under `/indstillinger`. Alle forsøg gemmes i tabellen `notifications`, og en fejl hos udbyderen afviser aldrig selve ændringen.
 
 ## Ikke med endnu
 

@@ -1,6 +1,6 @@
 // Kalender: træninger, kampe og faste træningsserier, og trænerens overblik over svar og fremmøde.
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "../db/client";
 import { eventResponses, events, profiles, teamMembers, teams } from "../db/schema";
@@ -61,7 +61,8 @@ export async function setEventCancelled(
   return db
     .update(events)
     .set({ cancelledAt: cancelled ? ctx.now : null })
-    .where(where)
+    // Kun aktiviteter, der faktisk skifter tilstand, så en gentaget aflysning ikke rører noget (og ikke giver nye beskeder).
+    .where(and(where, cancelled ? isNull(events.cancelledAt) : isNotNull(events.cancelledAt)))
     .returning({ id: events.id });
 }
 
