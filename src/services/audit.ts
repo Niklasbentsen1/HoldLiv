@@ -83,6 +83,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "expense.paid": "Registrerede et udlæg som betalt",
   "expense.exported": "Eksporterede udlæg til udbetaling",
   "club.mileage_rate": "Ændrede kilometersatsen",
+  "memberstats.exported": "Eksporterede medlemstal",
   "camp.created": "Oprettede en camp",
   "camp.updated": "Rettede en camp",
   "camp.cancelled": "Aflyste en camp",
