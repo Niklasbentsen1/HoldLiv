@@ -57,6 +57,7 @@ export default async function Privacy({ searchParams }: { searchParams: Promise<
       {[...ctx.wards].length > 0 && (
         <section className="card stack" style={{ marginBottom: 20 }}>
           <h2 className="section-head">Slet et barns data</h2>
+          <p className="muted small">Har barnet en anden værge, fjerner du kun dig selv som værge, og barnets profil bliver hos den anden.</p>
           {withConsents.filter((p) => p.id !== ctx.profileId).map((p) => (
             <form key={p.id} action={deleteChildAction} className="row" style={{ justifyContent: "space-between" }}>
               <input type="hidden" name="profileId" value={p.id} />
@@ -75,6 +76,7 @@ export default async function Privacy({ searchParams }: { searchParams: Promise<
         <p className="muted">
           Dit login, dine beskeder, opslag, tilmeldinger og oplysninger slettes. Opkrævninger og betalinger gemmes uden navn, fordi bogføringsloven kræver det.
           {plan.people.length > 1 && ` Børn, hvor du er eneste værge, slettes også: ${plan.people.filter((p) => !p.self).map((p) => p.name).join(", ")}.`}
+          {plan.people.some((p) => p.ownLogin) && " Mindst ét af børnene har eget login, som også slettes."}
         </p>
         {plan.blockers.map((b) => (
           <p key={b} className="error">{b}</p>

@@ -144,11 +144,42 @@ describe("sletning", () => {
     expect((await loadAccessContext(db, second.user.id)).wards.has(child.id)).toBe(true);
   });
 
+  it("et voksent barn slettes ikke med forælderen, og et barn med eget login nævnes", async () => {
+    const { p } = await newParent("voksent");
+    const karen = await ctxOf("karen");
+    // Et barn på 19, som forælderen stadig står som værge for, og et teenagebarn med eget login.
+    const adult = await registerUser(db, "voksent-barn@gdpr.test", { firstName: "Stor", lastName: "Barn", birthDate: "2007-01-01" });
+    const teen = await registerUser(db, "teen-barn@gdpr.test", { firstName: "Teen", lastName: "Barn", birthDate: "2013-01-01" });
+    await addClubMember(db, karen, demo.club.id, adult.profile.id);
+    await sql`insert into guardianships (guardian_profile_id, child_profile_id, relation) values (${p.profile.id}, ${adult.profile.id}, 'parent'), (${p.profile.id}, ${teen.profile.id}, 'parent')`;
+    const ctx = await loadAccessContext(db, p.user.id);
+    const prev = await previewDeletion(db, ctx);
+    expect(prev.people.map((x) => x.id)).not.toContain(adult.profile.id);
+    expect(prev.people.find((x) => x.id === teen.profile.id)?.ownLogin).toBe(true);
+    await deleteMyAccount(db, ctx, "voksent@gdpr.test");
+    const a = await db.select().from(profiles).where(eq(profiles.id, adult.profile.id));
+    expect(a[0]).toMatchObject({ firstName: "Stor", deletedAt: null });
+    expect(await db.select().from(users).where(eq(users.email, "voksent-barn@gdpr.test"))).toHaveLength(1);
+    // Teenageren med eget login blev slettet sammen med sit login.
+    expect(await db.select().from(users).where(eq(users.email, "teen-barn@gdpr.test"))).toEqual([]);
+  });
+
+  it("med to værger fjerner man kun sig selv, og den anden beholder barnet", async () => {
+    const { p, child, ctx } = await newParent("gaar");
+    const second = await registerUser(db, "gaar2@gdpr.test", { firstName: "Pia", lastName: "Anden", birthDate: "1986-01-01" });
+    const { addGuardian } = await import("../src/services");
+    await addGuardian(db, ctx, child.id, second.profile.id);
+    expect(await deleteChildProfile(db, ctx, child.id)).toBe("left");
+    expect((await db.select().from(profiles).where(eq(profiles.id, child.id)))[0].firstName).toBe("Lille");
+    expect((await loadAccessContext(db, p.user.id)).wards.has(child.id)).toBe(false);
+    expect((await loadAccessContext(db, second.user.id)).wards.has(child.id)).toBe(true);
+  });
+
   it("en værge kan slette et barns data, og kun sit eget barn", async () => {
     const { child, ctx } = await newParent("barn");
     await expect(deleteChildProfile(db, await ctxOf("ali"), child.id)).rejects.toThrow();
     await db.insert(eventResponses).values({ eventId: (await sql`select id from events limit 1`)[0].id, profileId: child.id, status: "yes", respondedByUserId: ctx.userId });
-    await deleteChildProfile(db, ctx, child.id);
+    expect(await deleteChildProfile(db, ctx, child.id)).toBe("deleted");
     expect(await db.select().from(eventResponses).where(eq(eventResponses.profileId, child.id))).toEqual([]);
     expect((await db.select().from(profiles).where(eq(profiles.id, child.id)))[0].deletedAt).not.toBeNull();
   });

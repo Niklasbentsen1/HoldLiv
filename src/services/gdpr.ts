@@ -176,7 +176,8 @@ async function planDeletion(db: Db, ctx: AccessContext): Promise<DeletionPlan> {
     .select({ childId: guardianships.childProfileId, guardians: sql<number>`(select count(*)::int from guardianships g2 where g2.child_profile_id = guardianships.child_profile_id)` })
     .from(guardianships)
     .where(eq(guardianships.guardianProfileId, ctx.profileId));
-  const sole = kids.filter((k) => k.guardians <= 1).map((k) => k.childId);
+  // Kun mindreårige: et voksent barn er sin egen person, selv om man stadig står som værge.
+  const sole = kids.filter((k) => k.guardians <= 1 && ctx.wards.has(k.childId)).map((k) => k.childId);
   const profileIds = [ctx.profileId, ...sole];
 
   const soleAdmin = await db
@@ -202,8 +203,9 @@ async function planDeletion(db: Db, ctx: AccessContext): Promise<DeletionPlan> {
 
 export async function previewDeletion(db: Db, ctx: AccessContext) {
   const plan = await planDeletion(db, ctx);
-  const names = await db.select({ id: profiles.id, firstName: profiles.firstName, lastName: profiles.lastName }).from(profiles).where(inArray(profiles.id, plan.profileIds));
-  return { blockers: plan.blockers, people: names.map((n) => ({ id: n.id, name: `${n.firstName} ${n.lastName}`, self: n.id === ctx.profileId })) };
+  const names = await db.select({ id: profiles.id, firstName: profiles.firstName, lastName: profiles.lastName, userId: profiles.userId }).from(profiles).where(inArray(profiles.id, plan.profileIds));
+  // ownLogin: et barn med eget login mister også sit login.
+  return { blockers: plan.blockers, people: names.map((n) => ({ id: n.id, name: `${n.firstName} ${n.lastName}`, self: n.id === ctx.profileId, ownLogin: n.id !== ctx.profileId && !!n.userId })) };
 }
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -252,12 +254,24 @@ export async function deleteMyAccount(db: Db, ctx: AccessContext, confirmEmail: 
   for (const clubId of clubIds) await logAudit(db, { action: "gdpr.deleted", clubId, detail: { profiles: plan.profileIds.length } });
 }
 
-/** En værge sletter et barns data, når barnet har en anden værge eller man blot vil af med barnet (kun barnet). */
-export async function deleteChildProfile(db: Db, ctx: AccessContext, childProfileId: string) {
+/**
+ * En værge sletter et barns data. Har barnet en anden værge, fjerner man kun sig selv som værge, så den anden
+ * forælder ikke mister barnets profil; ellers anonymiseres barnet.
+ */
+export async function deleteChildProfile(db: Db, ctx: AccessContext, childProfileId: string): Promise<"deleted" | "left"> {
   if (!ctx.wards.has(childProfileId)) throw new ForbiddenError("profile.edit");
+  const [{ others }] = await db
+    .select({ others: sql<number>`count(*)::int` })
+    .from(guardianships)
+    .where(and(eq(guardianships.childProfileId, childProfileId), sql`${guardianships.guardianProfileId} <> ${ctx.profileId}`));
+  if (others > 0) {
+    await db.delete(guardianships).where(and(eq(guardianships.childProfileId, childProfileId), eq(guardianships.guardianProfileId, ctx.profileId)));
+    return "left";
+  }
   const [{ open }] = await db.select({ open: sql<number>`count(*)::int` }).from(charges).where(and(eq(charges.profileId, childProfileId), eq(charges.status, "open")));
   if (open > 0) throw new Error(`Der er ${open} ubetalte opkrævninger. Betal dem, eller bed foreningen annullere dem, før du sletter.`);
   const clubIds = await clubsOf(db, [childProfileId]);
   await db.transaction(async (tx) => anonymize(tx, [childProfileId], ctx.now));
   for (const clubId of clubIds) await logAudit(db, { action: "gdpr.deleted", clubId, detail: { profiles: 1, child: true } });
+  return "deleted";
 }
