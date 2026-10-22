@@ -36,6 +36,13 @@
       "when": 1792671419219,
       "tag": "0004_samkorsel",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792672279334,
+      "tag": "0005_opgaver",
+      "breakpoints": true
     }
   ]
 }

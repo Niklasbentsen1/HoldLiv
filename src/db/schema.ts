@@ -393,3 +393,31 @@ export const carpoolRequests = pgTable(
   },
   (t) => [primaryKey({ columns: [t.eventId, t.profileId] })],
 );
+
+// --- Frugt og opgaver (modul "tasks") ---
+
+export const taskKind = pgEnum("task_kind", ["fruit", "task"]);
+
+// En opgave på holdet: frugt til en kamp, kridtning, oprydning. Opgaven hører til en familie, og familien er
+// en spiller på holdet (spilleren og dennes værger). Uden assignee_profile_id mangler opgaven en familie.
+export const teamTasks = pgTable(
+  "team_tasks",
+  {
+    id: id(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    kind: taskKind("kind").notNull(),
+    title: text("title").notNull(),
+    note: text("note"),
+    // Hører opgaven til en aktivitet, fx frugt til kampen lørdag, følger den aktivitetens tidspunkt.
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
+    assigneeProfileId: uuid("assignee_profile_id").references(() => profiles.id, { onDelete: "set null" }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    doneByUserId: uuid("done_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("team_tasks_team_idx").on(t.teamId, t.kind), index("team_tasks_event_idx").on(t.eventId)],
+);
