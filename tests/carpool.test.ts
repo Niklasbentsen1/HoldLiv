@@ -52,7 +52,9 @@ describe("samkørsel", () => {
     await bookSeat(db, niklas, o.id, kid("emma"));
     // Anne må ikke sætte Ida (Sofies barn) på bilen.
     await expect(bookSeat(db, await ctxOf("anne"), o.id, kid("ida"))).rejects.toThrow(/må ikke/);
-    // Føreren må sætte en spiller på sin egen bil.
+    // Føreren må ikke tage et barn, der ikke har bedt om en lift. Emma sidder allerede i bilen, så prøv Alma.
+    await expect(bookSeat(db, ali, o.id, kid("alma"))).rejects.toThrow(/ikke bedt om en lift/);
+    // Alis egen datter Noor sættes på af Ali som forælder.
     await bookSeat(db, ali, o.id, kid("noor"));
     const fresh = await offerOf("ali");
     expect(fresh.free).toBe(0);
@@ -62,8 +64,10 @@ describe("samkørsel", () => {
   it("overbooker ikke, heller ikke når to trykker samtidig", async () => {
     await offerRide(db, await ctxOf("henrik"), match, { seats: 1, meetingPoint: "Klubhuset" });
     const o = await offerOf("henrik");
-    // Alis bil er fuld (Emma og Noor), også for føreren selv.
-    await expect(bookSeat(db, await ctxOf("ali"), (await offerOf("ali")).id, kid("ida"))).rejects.toThrow(/fuld/);
+    // Alis bil er fuld (Emma og Noor), også selv om Alma har bedt om en lift.
+    await requestRide(db, await ctxOf("henrik"), match, kid("alma"));
+    await expect(bookSeat(db, await ctxOf("ali"), (await offerOf("ali")).id, kid("alma"))).rejects.toThrow(/fuld/);
+    await cancelRideRequest(db, await ctxOf("henrik"), match, kid("alma"));
     const results = await Promise.allSettled([
       bookSeat(db, await ctxOf("sofie"), o.id, kid("ida")),
       bookSeat(db, await ctxOf("anne"), o.id, kid("freja")),
@@ -84,6 +88,27 @@ describe("samkørsel", () => {
     await bookSeat(db, sofie, larsOffer.id, kid("ida"));
     expect((await offerOf("lars")).passengers.map((p) => p.name.split(" ")[0])).toEqual(["Ida"]);
     expect((await offerOf("henrik")).passengers).toHaveLength(0);
+  });
+
+  it("en fører kan ikke flytte et barn fra en anden bil, men tager gerne et barn med, der mangler lift", async () => {
+    const henrik = await ctxOf("henrik");
+    const sofie = await ctxOf("sofie");
+    const ali = await ctxOf("ali");
+    // Ida sidder i Henriks eller Lars' bil (sat af Sofie). Alis bil har plads efter at Noor er taget af.
+    const aliOffer = await offerOf("ali");
+    await leaveSeat(db, ali, aliOffer.id, kid("noor"));
+    const idaCar = (await getEventCarpool(db, sofie, match)).offers.find((o) => o.passengers.some((p) => p.name.startsWith("Ida")))!;
+    expect(idaCar.driverName).not.toMatch(/^Ali/);
+    await expect(bookSeat(db, ali, aliOffer.id, kid("ida"))).rejects.toThrow(/ikke bedt om en lift/);
+    expect((await getEventCarpool(db, sofie, match)).offers.find((o) => o.id === idaCar.id)!.passengers.map((p) => p.name)).toContainEqual(expect.stringMatching(/^Ida/));
+    // Alma mangler en lift (Henrik er hendes far, men hun har ikke plads). Ali kan tage hende med.
+    await requestRide(db, henrik, match, kid("alma"));
+    const req = (await getEventCarpool(db, ali, match)).requests.find((r) => r.name.startsWith("Alma"))!;
+    expect(req.takeIn.map((t) => t.offerId)).toEqual([aliOffer.id]);
+    await bookSeat(db, ali, aliOffer.id, kid("alma"));
+    expect((await getEventCarpool(db, ali, match)).requests.map((r) => r.name)).not.toContainEqual(expect.stringMatching(/^Alma/));
+    await leaveSeat(db, ali, aliOffer.id, kid("alma"));
+    await bookSeat(db, ali, aliOffer.id, kid("noor"));
   });
 
   it("liftønsker: kun for egne børn, og en plads fjerner ønsket", async () => {

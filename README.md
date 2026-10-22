@@ -164,4 +164,4 @@ Hvert hold har sine egne moduler (samkørsel, frugt og opgaver, bødekasse). Bes
 
 ### Modul: samkørsel
 
-Pr. aktivitet kan voksne tilbyde pladser (mødested, afgang, besked), forældre sætter deres barn på en bil eller melder "mangler en lift", og føreren og trænere kan også sætte spillere på. Pladser tælles med lås på bilen, så ingen overbookes. Førerens nummer vises for passagererne, deres forældre og trænere; forældrenes numre vises for føreren og trænere. Kode: `src/services/carpool.ts`, side: `/hold/[id]/samkorsel`.
+Pr. aktivitet kan voksne tilbyde pladser (mødested, afgang, besked), forældre sætter deres barn på en bil eller melder "mangler en lift", og føreren og trænere kan sætte spillere på; føreren kan kun tage spillere med, der har bedt om en lift, og flytter aldrig et barn fra en anden bil. Pladser tælles med lås på bilen, så ingen overbookes. Førerens nummer vises for passagererne, deres forældre og trænere; forældrenes numre vises for føreren og trænere. Kode: `src/services/carpool.ts`, side: `/hold/[id]/samkorsel`.

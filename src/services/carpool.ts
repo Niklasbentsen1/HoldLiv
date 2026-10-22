@@ -148,8 +148,8 @@ export async function cancelRideRequest(db: Db, ctx: AccessContext, eventId: str
 }
 
 /**
- * Sæt en spiller på en bil. Forælderen gør det for sit barn, føreren kan sætte en spiller på sin egen bil,
- * og trænere/admin kan sætte alle på. Pladserne tælles i en transaktion med lås på bilen, så to forældre der
+ * Sæt en spiller på en bil. Forælderen gør det for sit barn, trænere/admin kan sætte alle på, og føreren kan
+ * tage en spiller med på sin egen bil, men kun hvis spilleren har bedt om en lift. Pladserne tælles i en transaktion med lås på bilen, så to forældre der
  * trykker samtidig ikke kan overbooke. Sidder spilleren i en anden bil til samme aktivitet, flyttes vedkommende.
  */
 export async function bookSeat(db: Db, ctx: AccessContext, offerId: string, profileId: string) {
@@ -166,6 +166,15 @@ export async function bookSeat(db: Db, ctx: AccessContext, offerId: string, prof
     if (!locked) throw new Error("Samkørslen findes ikke længere.");
     const seated = await tx.select({ p: carpoolPassengers.profileId, offerId: carpoolPassengers.offerId }).from(carpoolPassengers).where(eq(carpoolPassengers.eventId, e.id));
     if (seated.some((s) => s.p === profileId && s.offerId === offerId)) return;
+    // En fører der hverken er spillerens forælder eller træner/admin må kun tage spillere med fra "mangler en lift".
+    // Hun må aldrig flytte en spiller, som forælderen allerede har sat på en anden bil.
+    if (!canActAs(ctx, profileId) && !leads(ctx, e)) {
+      const [asked] = await tx
+        .select({ p: carpoolRequests.profileId })
+        .from(carpoolRequests)
+        .where(and(eq(carpoolRequests.eventId, e.id), eq(carpoolRequests.profileId, profileId)));
+      if (!asked || seated.some((s) => s.p === profileId)) throw new Error("Spilleren har ikke bedt om en lift.");
+    }
     if (seated.filter((s) => s.offerId === offerId).length >= locked.seats) throw new Error("Bilen er fuld.");
     await tx.delete(carpoolPassengers).where(and(eq(carpoolPassengers.eventId, e.id), eq(carpoolPassengers.profileId, profileId)));
     await tx.insert(carpoolPassengers).values({ offerId, eventId: e.id, profileId, addedByUserId: ctx.userId });
@@ -283,6 +292,12 @@ export async function getEventCarpool(db: Db, ctx: AccessContext, eventId: strin
       note: r.note,
       mine: canActAs(ctx, r.profileId),
       canCancel: open && (canActAs(ctx, r.profileId) || lead),
+      /** Biler med ledig plads, som man selv må tage spilleren med i: egen bil som fører, alle biler som træner/admin. */
+      takeIn: open
+        ? offers
+            .filter((o) => (o.driverProfileId === ctx.profileId || lead) && o.seats > passengers.filter((p) => p.offerId === o.id).length)
+            .map((o) => ({ offerId: o.id, driverName: `${o.firstName} ${o.lastName}` }))
+        : [],
     })),
   };
 }

@@ -69,17 +69,23 @@ export default async function Carpool({ params, searchParams }: { params: Promis
       {details.length === 0 && <Empty>Ingen kommende aktiviteter.</Empty>}
       <ul className="stack" style={{ maxWidth: 760, padding: 0, margin: 0, listStyle: "none" }}>
         {details.map(({ e, c }) => (
-          <li key={e.id} id={`e${e.id}`} className="card stack">
-            <div className="row-card" style={{ padding: 0, boxShadow: "none" }}>
-              <DateTile date={e.startsAt} type={e.type} />
-              <span className="grow">
-                <strong>{e.title}</strong>
-                <span className="muted small block">
-                  {dayHeading(e.startsAt)} kl. {time(e.startsAt)}
-                  {e.location ? ` · ${e.location}` : ""}
+          <li key={e.id} id={`e${e.id}`} className="card">
+            {/* Kampe og aktiviteter med samkørsel står åbne; almindelige træninger er foldet sammen. */}
+            <details open={e.type === "match" || c.offers.length > 0 || c.requests.length > 0} className="stack">
+            <summary style={{ listStyle: "none", cursor: "pointer" }}>
+              <span className="row-card" style={{ padding: 0, boxShadow: "none" }}>
+                <DateTile date={e.startsAt} type={e.type} />
+                <span className="grow">
+                  <strong>{e.title}</strong>
+                  <span className="muted small block">
+                    {dayHeading(e.startsAt)} kl. {time(e.startsAt)}
+                    {e.location ? ` · ${e.location}` : ""}
+                  </span>
                 </span>
+                {c.offers.length > 0 && <span className="pill brand">{c.offers.length} {c.offers.length === 1 ? "bil" : "biler"}</span>}
+                {c.requests.length > 0 && <span className="pill cancel">{c.requests.length} mangler lift</span>}
               </span>
-            </div>
+            </summary>
 
             {c.offers.length === 0 && <p className="muted small">Ingen har tilbudt at køre endnu.</p>}
             {c.offers.map((o) => (
@@ -158,6 +164,12 @@ export default async function Carpool({ params, searchParams }: { params: Promis
                         <span className="name">{r.name}</span>
                         {r.note && <span className="note">{r.note}</span>}
                       </span>
+                      {r.takeIn.map((t) => (
+                        <form key={t.offerId} action={bookSeatAction}>
+                          <Hidden teamId={id} eventId={e.id} offerId={t.offerId} profileId={r.profileId} />
+                          <button className="small">Tag med{r.takeIn.length > 1 ? ` hos ${t.driverName.split(" ")[0]}` : ""}</button>
+                        </form>
+                      ))}
                       {r.canCancel && (
                         <form action={cancelRideRequestAction}>
                           <Hidden teamId={id} eventId={e.id} profileId={r.profileId} />
@@ -188,6 +200,7 @@ export default async function Carpool({ params, searchParams }: { params: Promis
                 </form>
               </details>
             )}
+            </details>
           </li>
         ))}
       </ul>
