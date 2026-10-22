@@ -176,6 +176,13 @@
       "when": 1792695981479,
       "tag": "0024_udlaeg",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792696783202,
+      "tag": "0025_camps",
+      "breakpoints": true
     }
   ]
 }

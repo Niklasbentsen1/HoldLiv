@@ -11,8 +11,10 @@ export const INTERVAL_LABEL: Record<FeeInterval, string> = {
 };
 const MONTHS: Record<FeeInterval, number> = { month: 1, quarter: 3, half_year: 6, year: 12 };
 
-const krFmt = new Intl.NumberFormat("da-DK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-export const kr = (ore: number) => `${krFmt.format(ore / 100)} kr.`;
+const krWhole = new Intl.NumberFormat("da-DK", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const krCents = new Intl.NumberFormat("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Hele kroner uden decimaler, ellers altid med to: 450 kr. og 450,50 kr. */
+export const kr = (ore: number) => `${(ore % 100 === 0 ? krWhole : krCents).format(ore / 100)} kr.`;
 
 /** "650", "650,50" eller "1.100" -> øre. */
 export function parseKr(value: string): number {

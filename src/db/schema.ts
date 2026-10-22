@@ -341,7 +341,7 @@ export const eventResponses = pgTable(
 export const feeInterval = pgEnum("fee_interval", ["month", "quarter", "half_year", "year"]);
 export const chargeStatus = pgEnum("charge_status", ["open", "paid", "cancelled", "refunded"]);
 // fee = kontingent for en periode, join_fee = engangs indmeldelsesgebyr, other = enkeltopkrævning.
-export const chargeKind = pgEnum("charge_kind", ["fee", "join_fee", "other"]);
+export const chargeKind = pgEnum("charge_kind", ["fee", "join_fee", "other", "camp"]);
 export const paymentProvider = pgEnum("payment_provider", ["stripe", "mock", "manual"]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "refunded"]);
 
@@ -916,3 +916,57 @@ export const expenseReceipts = pgTable("expense_receipts", {
   data: bytea("data").notNull(),
   createdAt: createdAt(),
 });
+
+// --- Camps og arrangementer med tilmelding og betaling ---
+
+export const campSignupStatus = pgEnum("camp_signup_status", ["confirmed", "waitlist", "cancelled"]);
+
+// Pris, antal pladser og søskenderabat bestemmer foreningens egen admin/kasserer.
+export const camps = pgTable(
+  "camps",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on").notNull(),
+    priceOre: integer("price_ore").notNull(),
+    siblingDiscountPercent: integer("sibling_discount_percent").notNull().default(0),
+    // Null = ubegrænset. Er campen fuld, kommer nye på ventelisten.
+    capacity: integer("capacity"),
+    // Sidste dag, man kan tilmelde sig. Null = indtil campen er slut.
+    signupDeadline: date("signup_deadline"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("camps_club_idx").on(t.clubId, t.startsOn)],
+);
+
+export const campSignups = pgTable(
+  "camp_signups",
+  {
+    id: id(),
+    campId: uuid("camp_id")
+      .notNull()
+      .references(() => camps.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    signedUpByUserId: uuid("signed_up_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    status: campSignupStatus("status").notNull(),
+    // Opkrævningen, når pladsen er bekræftet. Søskenderabatten kopieres hertil, så den ikke ændres bagefter.
+    chargeId: uuid("charge_id").references(() => charges.id, { onDelete: "set null" }),
+    discountPercent: integer("discount_percent").notNull().default(0),
+    createdAt: createdAt(),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  },
+  (t) => [
+    // Én aktiv tilmelding pr. person og camp.
+    uniqueIndex("camp_signups_active_unique").on(t.campId, t.profileId).where(sql`${t.status} <> 'cancelled'`),
+    index("camp_signups_camp_idx").on(t.campId, t.status, t.createdAt),
+  ],
+);

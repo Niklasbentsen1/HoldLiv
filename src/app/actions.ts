@@ -55,6 +55,11 @@ import {
   saveCardFromCheckout,
   removeSavedCard,
   submitExpense,
+  createCamp,
+  updateCamp,
+  cancelCamp,
+  signUpForCamp,
+  cancelCampSignup,
   cancelExpense,
   decideExpense,
   markExpensePaid,
@@ -1004,4 +1009,49 @@ export async function saveMileageRate(formData: FormData) {
   const { ctx } = await requireSession();
   await attempt(kasse(formData, "/udlaeg"), () => setMileageRate(db, ctx, str(formData, "clubId"), str(formData, "rate") === "" ? null : parseKr(str(formData, "rate"))));
   revalidatePath("/kasse/udlaeg");
+}
+
+// --- Camps ---
+
+const campInput = (f: FormData) => ({
+  name: str(f, "name"),
+  description: opt(f, "description"),
+  startsOn: str(f, "startsOn"),
+  endsOn: str(f, "endsOn") || str(f, "startsOn"),
+  priceOre: parseKr(str(f, "price") || "0"),
+  siblingDiscountPercent: Number(str(f, "siblingDiscount") || 0),
+  capacity: str(f, "capacity") === "" ? null : Number(str(f, "capacity")),
+  signupDeadline: opt(f, "signupDeadline"),
+});
+
+export async function newCamp(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/camps"), () => createCamp(db, ctx, str(formData, "clubId"), campInput(formData)));
+  revalidatePath("/kasse/camps");
+}
+
+export async function editCamp(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/camps"), async () => updateCamp(db, ctx, str(formData, "campId"), campInput(formData), await deliverFromEnv()));
+  revalidatePath("/kasse/camps");
+}
+
+export async function cancelCampAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/camps"), async () => cancelCamp(db, ctx, str(formData, "campId"), await deliverFromEnv()));
+  revalidatePath("/kasse/camps");
+}
+
+export async function signUpCampAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/camps", () => signUpForCamp(db, ctx, str(formData, "campId"), str(formData, "profileId")));
+  revalidatePath("/camps");
+}
+
+export async function cancelCampSignupAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = formData.get("clubId") ? kasse(formData, "/camps") : "/camps";
+  await attempt(back, async () => cancelCampSignup(db, ctx, str(formData, "signupId"), await deliverFromEnv()));
+  revalidatePath("/camps");
+  revalidatePath("/kasse/camps");
 }

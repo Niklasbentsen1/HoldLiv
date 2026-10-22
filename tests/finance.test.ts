@@ -54,7 +54,7 @@ describe("beløb og perioder", () => {
     expect(parseKr("650")).toBe(65000);
     expect(parseKr("1.100,50 kr.")).toBe(110050);
     expect(() => parseKr("seks")).toThrow();
-    expect(kr(110050)).toBe("1.100,5 kr.");
+    expect(kr(110050)).toBe("1.100,50 kr.");
   });
 
   it("følger kalenderens perioder", () => {

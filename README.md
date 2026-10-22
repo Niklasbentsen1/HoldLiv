@@ -90,6 +90,8 @@ Stripe sættes op med `STRIPE_SECRET_KEY` og `STRIPE_WEBHOOK_SECRET`. Webhooken 
 
 Udlæg og kørsel: medlemmer sender dem på `/udlaeg` (udlæg kræver foto eller PDF af kvitteringen, op til 6 MB); admin og kasserer godkender, betaler og sætter kilometersatsen under Kasse, Udlæg. Satsen og beløbene bestemmer foreningen selv. Bilagene ligger i databasen og kan kun hentes af ejeren og foreningens admin/kasserer.
 
+Camps: admin/kasserer opretter dem under Kasse, Camps (pris, pladser, søskenderabat og frist bestemmer foreningen selv). Medlemmer og forældre tilmelder på `/camps`; fuldt hold giver venteliste, og hver bekræftet plads får en opkrævning under Betaling.
+
 ## Design
 
 - **Udtryk:** lyse flader med hvide, meget runde kort og én **signaturfarve** (`--brand`). Det vigtigste på hver skærm (fx næste aktivitet) står i et kort med signaturfarven som gradient. Skrift: Bricolage Grotesque (selvhostet via `@fontsource-variable`). Mørk tilstand følger systemet.
