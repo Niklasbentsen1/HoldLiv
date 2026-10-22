@@ -57,7 +57,7 @@ export const MODULES: Registry = {
         hint: "Spillere under denne alder kan ikke få bøder.",
       },
     ],
-    available: false,
+    available: true,
   },
 };
 
