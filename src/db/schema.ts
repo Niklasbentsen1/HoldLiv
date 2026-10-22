@@ -226,9 +226,30 @@ export const teams = pgTable(
     inviteCode: text("invite_code").notNull().unique(),
     // Kontingent nye spillere får, når de kommer på holdet og ikke har et i forvejen.
     defaultFeeId: uuid("default_fee_id").references(() => membershipFees.id, { onDelete: "set null" }),
+    // Højst så mange spillere. Tomt = ubegrænset. Er holdet fuldt, havner nye på ventelisten.
+    capacity: integer("capacity"),
+    // Når en plads bliver ledig, rykker den første på ventelisten automatisk op. Ellers vælger træneren.
+    autoPromote: boolean("auto_promote").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index("teams_club_idx").on(t.clubId)],
+);
+
+// Venteliste til et hold. Rækkefølgen er created_at. Personen er endnu ikke spiller og behøver ikke at være medlem af foreningen.
+export const teamWaitlist = pgTable(
+  "team_waitlist",
+  {
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    note: text("note"),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.profileId] }), index("team_waitlist_order_idx").on(t.teamId, t.createdAt)],
 );
 
 // Holdroller: træner eller spiller. Samme profil kan have begge på samme hold.

@@ -1,19 +1,19 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { getTeam, listEnabledModules, listTeamEvents } from "../../../services";
+import { getTeam, listEnabledModules, listTeamEvents, listWaitlist } from "../../../services";
 import { db } from "../../../lib/db";
 import { requireSession } from "../../../lib/session";
 import { shortDay, time } from "../../../lib/format";
 import { Shell, ErrorBox } from "../../../components/Shell";
 import { Avatar, AvatarStack, Crest, DateTile, Empty, Icon, PageHead, Stat, TYPE_ICON } from "../../../components/ui";
-import { addCoach, newInviteLink, removePlayer } from "../../actions";
+import { addCoach, leaveWaitlistAction, newInviteLink, promotePlayer, removePlayer, saveCapacity } from "../../actions";
 
 export const dynamic = "force-dynamic";
 const WEEKS_AHEAD = 6;
 
-export default async function TeamPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ fejl?: string }> }) {
+export default async function TeamPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ fejl?: string; venteliste?: string }> }) {
   const { id } = await params;
-  const { fejl } = await searchParams;
+  const { fejl, venteliste } = await searchParams;
   const { ctx } = await requireSession(`/hold/${id}`);
   const team = await getTeam(db, ctx, id);
   const to = new Date(ctx.now.getTime() + WEEKS_AHEAD * 7 * 86_400_000);
@@ -22,6 +22,8 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
   const h = await headers();
   const origin = process.env.APP_URL ?? `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
   const playerCount = team.players.length;
+  const waitlist = await listWaitlist(db, ctx, id);
+  const { spots } = team;
 
   const next = events.find((e) => !e.cancelledAt);
 
@@ -64,9 +66,10 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
         }
       />
       <ErrorBox message={fejl} />
+      {venteliste && <p className="pill">Holdet var fuldt, så nogle af dem du valgte står på ventelisten.</p>}
 
       <div className="tiles" style={{ marginBottom: 20 }}>
-        <Stat label="Spillere" value={playerCount} icon="users" hint={<AvatarStack names={team.players.map((p) => `${p.firstName} ${p.lastName}`)} max={6} size={28} />} />
+        <Stat label="Spillere" value={spots.capacity === null ? playerCount : `${playerCount}/${spots.capacity}`} icon="users" hint={<AvatarStack names={team.players.map((p) => `${p.firstName} ${p.lastName}`)} max={6} size={28} />} />
         <Stat label="Aktiviteter" value={events.filter((e) => !e.cancelledAt).length} icon="calendar" hint={`de næste ${WEEKS_AHEAD} uger`} />
         <Stat
           label="Næste"
@@ -190,6 +193,65 @@ export default async function TeamPage({ params, searchParams }: { params: Promi
               ))}
             </ul>
           </section>
+
+          {(team.canManage || waitlist.length > 0) && (
+            <section>
+              <div className="section-head">
+                <h2>Venteliste</h2>
+                <span className="pill">{waitlist.length}</span>
+              </div>
+              {team.canManage && (
+                <form action={saveCapacity} className="stack" style={{ marginBottom: 10 }}>
+                  <input type="hidden" name="teamId" value={id} />
+                  <label>
+                    Antal pladser <span className="muted">(tomt = ubegrænset)</span>
+                    <input name="capacity" type="number" min={0} max={500} defaultValue={spots.capacity ?? ""} />
+                  </label>
+                  <label className="check">
+                    <input type="checkbox" name="autoPromote" defaultChecked={spots.autoPromote} />
+                    Ryk den første på ventelisten op automatisk, når der bliver plads
+                  </label>
+                  <button>Gem</button>
+                </form>
+              )}
+              <ul className="people">
+                {waitlist.map((w) => (
+                  <li key={w.profileId}>
+                    <span className="pill">{w.position}</span>
+                    <span className="grow">
+                      <span className="name">
+                        {w.firstName} {w.lastName}
+                      </span>
+                      {w.guardians.length > 0 && (
+                        <span className="note">{w.guardians.map((g) => `${g.firstName} ${g.lastName}${g.phone ? `, ${g.phone}` : ""}`).join(" · ")}</span>
+                      )}
+                      {w.note && <span className="note">{w.note}</span>}
+                    </span>
+                    {team.canManage && (
+                      <form action={promotePlayer} className="inline">
+                        <input type="hidden" name="teamId" value={id} />
+                        <input type="hidden" name="profileId" value={w.profileId} />
+                        {spots.full && (
+                          <label className="check small">
+                            <input type="checkbox" name="overfull" /> Overtræk
+                          </label>
+                        )}
+                        <button className="link small">Ryk op</button>
+                      </form>
+                    )}
+                    {(team.canManage || w.mine) && (
+                      <form action={leaveWaitlistAction}>
+                        <input type="hidden" name="teamId" value={id} />
+                        <input type="hidden" name="profileId" value={w.profileId} />
+                        <button className="link small">Fjern</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+                {waitlist.length === 0 && <li className="muted">Ingen venter.</li>}
+              </ul>
+            </section>
+          )}
 
           {team.inviteCode && (
             <section className="card tint invite">

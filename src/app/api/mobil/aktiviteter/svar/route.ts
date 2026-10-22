@@ -6,7 +6,7 @@ import { origin } from "../../../../../lib/origin";
 import { sendMail } from "../../../../../lib/mail";
 import { getSmsSender } from "../../../../../lib/sms";
 import { respondToEventNotifying } from "../../../../../services";
-import { authed, bodyOf, guard, ok, text } from "../../_lib";
+import { authed, bodyOf, guard, ok, text, uuid } from "../../_lib";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const status = text(b.status);
     if (status !== "yes" && status !== "no" && status !== "maybe") throw new Error("Svar ja, nej eller måske.");
     const deliver = { mail: sendMail, sms: getSmsSender(), push: getPushSender(), devicePush: getDevicePushSender(), baseUrl: await origin() };
-    await respondToEventNotifying(db, ctx, deliver, text(b.eventId), text(b.profileId), status, typeof b.comment === "string" ? b.comment.trim() || null : undefined);
+    await respondToEventNotifying(db, ctx, deliver, uuid(b.eventId, "aktivitet"), uuid(b.profileId, "profil"), status, typeof b.comment === "string" ? b.comment.trim() || null : undefined);
     return ok();
   });
 }

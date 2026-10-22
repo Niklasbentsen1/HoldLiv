@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { listFamily } from "../../services";
+import { listFamily, myWaitlistPositions } from "../../services";
 import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { Shell, ErrorBox } from "../../components/Shell";
 import { Avatar, Crest, PageHead } from "../../components/ui";
-import { addChild, addGuardian } from "../actions";
+import { addChild, addGuardian, leaveWaitlistAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -16,15 +16,28 @@ const age = (birthDate: string | null, now: Date) => {
   return a;
 };
 
-export default async function Family({ searchParams }: { searchParams: Promise<{ fejl?: string }> }) {
-  const { fejl } = await searchParams;
+export default async function Family({ searchParams }: { searchParams: Promise<{ fejl?: string; venteliste?: string }> }) {
+  const { fejl, venteliste } = await searchParams;
   const { ctx } = await requireSession("/familie");
   const kids = await listFamily(db, ctx);
+  const waiting = await myWaitlistPositions(db, ctx);
 
   return (
     <Shell active="/familie" ctx={ctx}>
       <PageHead title="Familie" sub="Børn har ikke eget login. Du melder til og fra for dem, og du kan skifte til dem på overblikket." />
       <ErrorBox message={fejl} />
+      {venteliste && <p className="pill">Holdet er fuldt. Du står på ventelisten og får besked, når der bliver en plads.</p>}
+      {waiting
+        .filter((w) => w.profileId === ctx.profileId)
+        .map((w) => (
+          <form key={w.teamId} action={leaveWaitlistAction} className="card row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
+            <input type="hidden" name="teamId" value={w.teamId} />
+            <input type="hidden" name="profileId" value={w.profileId} />
+            <input type="hidden" name="back" value="/familie" />
+            <span>Du står som nr. {w.position} på ventelisten til {w.team}</span>
+            <button className="link small">Træk tilbage</button>
+          </form>
+        ))}
       <div className="team-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", marginBottom: 20 }}>
 
       {kids.map((k) => (
@@ -50,6 +63,17 @@ export default async function Family({ searchParams }: { searchParams: Promise<{
               <span className="muted small">Ikke på et hold endnu. Bed træneren om holdets invitationslink.</span>
             )}
           </div>
+          {waiting
+            .filter((w) => w.profileId === k.id)
+            .map((w) => (
+              <form key={w.teamId} action={leaveWaitlistAction} className="row" style={{ justifyContent: "space-between" }}>
+                <input type="hidden" name="teamId" value={w.teamId} />
+                <input type="hidden" name="profileId" value={k.id} />
+                <input type="hidden" name="back" value="/familie" />
+                <span className="small">Nr. {w.position} på ventelisten til {w.team}</span>
+                <button className="link small">Træk tilbage</button>
+              </form>
+            ))}
           <div className="small muted">
             Andre forældre: {k.otherGuardians.length ? k.otherGuardians.join(", ") : "ingen"}
           </div>

@@ -13,11 +13,13 @@ import {
   profiles,
   teamMembers,
   teams,
+  teamWaitlist,
   users,
 } from "../db/schema";
 import { assertCan, isMinor, type AccessContext } from "../auth/permissions";
 import { loadEventFacts, loadProfileFacts, loadTeamFacts } from "../auth/context";
 import { logAudit } from "./audit";
+import { lockTeamSpots } from "./waitlist";
 import { applyTeamDefaultFee, newInviteCode } from "./teams";
 
 export interface PersonInput {
@@ -136,8 +138,21 @@ export async function addTeamMember(
     .from(clubMemberships)
     .where(and(eq(clubMemberships.clubId, team.clubId), eq(clubMemberships.profileId, profileId)));
   if (!member) throw new Error("Profilen skal være medlem af foreningen først");
-  await db.insert(teamMembers).values({ teamId, profileId, role }).onConflictDoNothing();
-  if (role === "player") await applyTeamDefaultFee(db, teamId, profileId);
+  if (role === "coach") {
+    await db.insert(teamMembers).values({ teamId, profileId, role }).onConflictDoNothing();
+    return;
+  }
+  await db.transaction(async (tx) => {
+    const spots = await lockTeamSpots(tx, teamId);
+    const [already] = await tx
+      .select({ id: teamMembers.profileId })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.profileId, profileId), eq(teamMembers.role, "player")));
+    if (!already && spots.full) throw new Error("Holdet er fuldt. Sæt spilleren på ventelisten, eller hæv antallet af pladser.");
+    await tx.insert(teamMembers).values({ teamId, profileId, role }).onConflictDoNothing();
+    await tx.delete(teamWaitlist).where(and(eq(teamWaitlist.teamId, teamId), eq(teamWaitlist.profileId, profileId)));
+    await applyTeamDefaultFee(tx, teamId, profileId);
+  });
 }
 
 export async function removeTeamMember(
@@ -278,5 +293,6 @@ export * from "./calendarFeed";
 export * from "./chat";
 export * from "./posts";
 export * from "./audit";
+export * from "./waitlist";
 export * from "./gdpr";
 export * from "./mobile";
