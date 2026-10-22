@@ -121,7 +121,7 @@ describe("bødekasse", () => {
     expect(anne.recent).toEqual([]);
     const sofie = await box("sofie"); // Lukas har ingen bøder
     expect(sofie.mine).toEqual([]);
-    expect(sofie.box).toEqual({ count: 3, paidOre: 0, openOre: 1000 + 500 + 2000 });
+    expect(sofie.box).toEqual({ count: 3, paidOre: 0, openOre: 1000 + 500 + 2000, refundedOre: 0 });
     const mette = await box("mette"); // William er Mettes barn, og hun er træner på U9, ikke på U11
     expect(mette.mine.map((m) => m.playerName.split(" ")[0])).toEqual(["William", "William"]);
     expect(mette.recent).toEqual([]);
@@ -133,16 +133,23 @@ describe("bødekasse", () => {
     const kasper = (await getFineBox(db, jonas, u11)).recent.find((r) => r.playerName.startsWith("Kasper"))!;
     await expect(setFinePaid(db, await ctxOf("anne"), kasper.id, true)).rejects.toThrow(/Kun trænere/);
     await setFinePaid(db, jonas, kasper.id, true);
-    expect((await box("sofie")).box).toEqual({ count: 3, paidOre: 1000, openOre: 2500 });
+    expect((await box("sofie")).box).toEqual({ count: 3, paidOre: 1000, openOre: 2500, refundedOre: 0 });
     await setFinePaid(db, jonas, kasper.id, false);
     await setFinePaid(db, jonas, kasper.id, true);
     await expect(cancelFine(db, await ctxOf("anne"), kasper.id)).rejects.toThrow(/Kun trænere/);
     await cancelFine(db, jonas, kasper.id);
     await expect(setFinePaid(db, jonas, kasper.id, true)).rejects.toThrow(/trukket tilbage/);
-    expect((await box("sofie")).box).toEqual({ count: 2, paidOre: 0, openOre: 2500 });
+    // Kasper havde betalt, så bøden regnes som tilbagebetalt og kan ses i oversigten.
+    expect((await box("sofie")).box).toEqual({ count: 2, paidOre: 0, openOre: 2500, refundedOre: 1000 });
     expect((await box("anne")).mine).toEqual([]);
     const trukket = (await box("jonas")).recent.find((r) => r.id === kasper.id)!;
-    expect(trukket.cancelled).toBe(true);
+    expect(trukket).toMatchObject({ cancelled: true, refunded: true });
+    // En bøde, der ikke var betalt, er bare trukket tilbage og er ikke tilbagebetalt.
+    const william = (await getFineBox(db, jonas, u11)).recent.find((r) => r.playerName.startsWith("William") && !r.cancelled)!;
+    await cancelFine(db, jonas, william.id);
+    const after = (await box("jonas")).recent.find((r) => r.id === william.id)!;
+    expect(after).toMatchObject({ cancelled: true, refunded: false });
+    expect((await box("sofie")).box.refundedOre).toBe(1000);
   });
 
   it("voksne på seniorholdet får bøder uden problemer", async () => {

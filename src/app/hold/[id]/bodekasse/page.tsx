@@ -47,7 +47,7 @@ export default async function Fines({ params, searchParams }: { params: Promise<
 
       <div className="tiles" style={{ marginBottom: 20 }}>
         <Stat label="I kassen" value={kr(f.box.paidOre)} icon="star" hint="betalte bøder" />
-        <Stat label="Mangler at blive betalt" value={kr(f.box.openOre)} icon="clock" hint={`${f.box.count} ${f.box.count === 1 ? "bøde" : "bøder"} i alt`} />
+        <Stat label="Mangler at blive betalt" value={kr(f.box.openOre)} icon="clock" hint={`${f.box.count} ${f.box.count === 1 ? "bøde" : "bøder"} i alt${f.box.refundedOre ? ` · ${kr(f.box.refundedOre)} tilbagebetalt` : ""}`} />
         <Stat label="Dine bøder" value={f.mine.filter((m) => !m.paid).length} icon="users" hint={f.mine.length ? "ikke betalt" : "ingen"} />
       </div>
 
@@ -112,7 +112,7 @@ export default async function Fines({ params, searchParams }: { params: Promise<
                       </span>
                       <span className="note">
                         {kr(r.amountOre)} · {shortDay(r.createdAt)}
-                        {r.cancelled ? " · trukket tilbage" : r.paid ? " · betalt" : ""}
+                        {r.refunded ? " · betalt og tilbagebetalt" : r.cancelled ? " · trukket tilbage" : r.paid ? " · betalt" : ""}
                       </span>
                     </span>
                     {!r.cancelled && (
