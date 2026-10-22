@@ -159,16 +159,34 @@ export async function analyseClub(db: Db, ctx: AccessContext, clubId: string) {
   return { teams: profilesOut, suggestions };
 }
 
-/** Beder rådgiveren om en samlet anbefaling. Kun sammentalte tal og holdnavne forlader HoldLiv, aldrig personer. */
+/** Holdnavne er fritekst og kan indeholde personnavne, så de erstattes med "Hold 1…" før de sendes, og sættes ind igen i svaret. */
+export function anonymiseTeams(names: string[]) {
+  const entries = names.map((name, i) => ({ name, alias: `Hold ${i + 1}` }));
+  const longestFirst = [...entries].filter((e) => e.name).sort((a, b) => b.name.length - a.name.length);
+  const escape = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Hele ord: "A" må ikke ramme "A-team" eller "Aften".
+  const edge = (core: string) => new RegExp(`(?<![\\p{L}\\p{N}_-])(?:${core})(?![\\p{L}\\p{N}_-])`, "gu");
+  const nameRe = longestFirst.length ? edge(longestFirst.map((e) => escape(e.name)).join("|")) : null;
+  const aliasRe = edge("Hold (\\d+)");
+  const aliasOf = new Map(entries.map((e) => [e.name, e.alias]));
+  return {
+    alias: (name: string) => aliasOf.get(name)!,
+    out: (text: string) => (nameRe ? text.replace(nameRe, (m) => aliasOf.get(m)!) : text),
+    back: (text: string) => text.replace(aliasRe, (m, n: string) => entries[Number(n) - 1]?.name ?? m),
+  };
+}
+
+/** Beder rådgiveren om en samlet anbefaling. Kun sammentalte tal og anonymiserede holdnavne forlader HoldLiv, aldrig personer. */
 export async function adviseClub(db: Db, ctx: AccessContext, clubId: string, advisor: Advisor) {
   const { teams: t, suggestions } = await analyseClub(db, ctx, clubId);
   const [club] = await db.select({ name: clubs.name }).from(clubs).where(eq(clubs.id, clubId));
+  const anon = anonymiseTeams(t.map((x) => x.name));
   const input: AdvisorInput = {
     club: club.name,
-    teams: t.map(({ teamId, ...rest }) => rest),
-    suggestions: suggestions.map(({ kind, title, detail }) => ({ kind, title, detail })),
+    teams: t.map(({ teamId, ...rest }) => ({ ...rest, name: anon.alias(rest.name) })),
+    suggestions: suggestions.map(({ kind, title, detail }) => ({ kind, title: anon.out(title), detail: anon.out(detail) })),
   };
-  const text = await advisor(input);
+  const text = anon.back(await advisor(input));
   await logAudit(db, { action: "ai.advice", clubId, actorUserId: ctx.userId });
   return text;
 }

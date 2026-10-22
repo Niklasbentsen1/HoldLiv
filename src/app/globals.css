@@ -90,6 +90,7 @@ p { margin: 0; }
 .block { display: block; }
 .grow { flex: 1; min-width: 0; }
 .stack { display: grid; gap: 14px; }
+ul.stack { list-style: none; padding: 0; margin: 0; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .inline { display: flex; gap: 8px; margin-top: 10px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }

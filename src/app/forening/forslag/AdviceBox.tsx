@@ -8,7 +8,7 @@ export function AdviceBox({ clubId }: { clubId: string }) {
     <form action={action} className="card stack">
       <input type="hidden" name="clubId" value={clubId} />
       <h2 className="section-head">Samlet anbefaling</h2>
-      <p className="muted small">Rådgiveren læser de sammentalte tal ovenfor og siger, hvad der bør prioriteres. Der sendes kun antal, aldersgrupper og holdnavne, aldrig navne på personer.</p>
+      <p className="muted small">Rådgiveren læser de sammentalte tal ovenfor og siger, hvad der bør prioriteres. Der sendes kun antal og aldersgrupper, og holdene kaldes "Hold 1…". Aldrig navne på personer.</p>
       {state.error && <p className="error">{state.error}</p>}
       {state.text && <p style={{ whiteSpace: "pre-wrap" }}>{state.text}</p>}
       <button disabled={pending}>{pending ? "Tænker…" : "Få en anbefaling"}</button>

@@ -1,5 +1,5 @@
 // AI-rådgiver til holdoptimering. Grænsefladen gør udbyderen udskiftelig; en mock bruges uden ANTHROPIC_API_KEY.
-// Der sendes kun sammentalte tal om hold (antal, alder i år, ventende), aldrig navne eller andre personoplysninger.
+// Der sendes kun sammentalte tal om hold (antal, alder i år, ventende), aldrig personoplysninger. Holdnavne erstattes med "Hold 1…".
 export interface AdvisorTeam {
   name: string;
   capacity: number | null;
@@ -32,6 +32,7 @@ const SYSTEM = `Du er rådgiver for en dansk idrætsforening og hjælper bestyre
 export const anthropicAdvisor: Advisor = async (input) => {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
+    signal: AbortSignal.timeout(20_000),
     headers: { "content-type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5",

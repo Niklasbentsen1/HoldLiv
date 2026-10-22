@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { testDb } from "./db";
 import { loadAccessContext } from "../src/auth/context";
-import { registerUser, createClub, createTeam, analyseClub, adviseClub, groupByAge, MIN_NEW_TEAM } from "../src/services";
+import { registerUser, createClub, createTeam, analyseClub, adviseClub, anonymiseTeams, groupByAge, MIN_NEW_TEAM } from "../src/services";
 import { clubMemberships, events, profiles, teamMembers, teamWaitlist, teams } from "../src/db/schema";
 import { eq } from "drizzle-orm";
 import { mockAdvisor, type AdvisorInput } from "../src/lib/advisor";
@@ -110,6 +110,21 @@ describe("holdforslag", () => {
   });
 });
 
+describe("anonymisering af holdnavne", () => {
+  const names = ["A", ...Array.from({ length: 10 }, (_, i) => `U${i + 9} piger`), "A-team"];
+  it("sætter navnene tilbage, også med 10 hold eller flere", () => {
+    const anon = anonymiseTeams(names);
+    const text = "Hold 1 og Hold 10 og Hold 12 er presset. Hold 13 findes ikke.";
+    expect(anon.back(text)).toBe("A og U17 piger og A-team er presset. Hold 13 findes ikke.");
+  });
+  it("erstatter kun hele navne, så et kort navn ikke rammer andre ord", () => {
+    const anon = anonymiseTeams(names);
+    expect(anon.out("Hæv A fra 10 til 12. A-team mangler en træner, og Aften er et ord. U9 piger venter.")).toBe(
+      "Hæv Hold 1 fra 10 til 12. Hold 12 mangler en træner, og Aften er et ord. Hold 2 venter.",
+    );
+  });
+});
+
 describe("AI-rådgiver", () => {
   it("får kun sammentalte tal, aldrig personer, og kan udskiftes", async () => {
     let seen: AdvisorInput | null = null;
@@ -119,8 +134,9 @@ describe("AI-rådgiver", () => {
     });
     expect(text).toContain("Opt IF har 5 hold");
     const sent = JSON.stringify(seen);
-    expect(sent).not.toMatch(/Barn\d|Test|formand@/);
-    expect(seen!.teams[0]).toEqual({ name: "A U9", capacity: 12, players: 12, waiting: 4, coaches: 1, ageMin: 9, ageMax: 9 });
+    expect(sent).not.toMatch(/Barn\d|Test|formand@|A U9|B U11/);
+    expect(JSON.stringify(seen!.suggestions)).toMatch(/Hold \d/);
+    expect(seen!.teams[0]).toEqual({ name: "Hold 1", capacity: 12, players: 12, waiting: 4, coaches: 1, ageMin: 9, ageMax: 9 });
     const log = await sql`select action from audit_log where action = 'ai.advice'`;
     expect(log).toHaveLength(1);
   });
