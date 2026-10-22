@@ -58,6 +58,9 @@ export async function listAudit(db: Db, ctx: AccessContext, clubId: string, befo
 export const AUDIT_LABELS: Record<string, string> = {
   "login.ok": "Loggede ind",
   "members.imported": "Importerede medlemmer",
+  "signup.settings": "Rettede indstillinger for online indmeldelse",
+  "signup.approved": "Godkendte en ansøgning om medlemskab",
+  "signup.rejected": "Afviste en ansøgning om medlemskab",
   "login.mfa_failed": "Forkert to-faktorkode",
   "mfa.enabled": "Slog to-faktor til",
   "mfa.disabled": "Slog to-faktor fra",

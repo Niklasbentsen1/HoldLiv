@@ -4,7 +4,8 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { loginTokens, sessions, users } from "../db/schema";
+import { loginTokens, profiles, sessions, users } from "../db/schema";
+import { firstNameOf, mergeProfile, unclaimedProfilesByEmail } from "./merge";
 
 export const CODE_TTL_MINUTES = 15;
 export const MAX_CODE_ATTEMPTS = 5;
@@ -95,9 +96,29 @@ async function consume(db: Db, tokenId: string, now: Date) {
 
 async function findOrCreateUser(db: Db, email: string): Promise<string> {
   const [created] = await db.insert(users).values({ email }).onConflictDoNothing().returning({ id: users.id });
-  if (created) return created.id;
-  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
-  return existing.id;
+  const userId = created ? created.id : (await db.select({ id: users.id }).from(users).where(eq(users.email, email)))[0].id;
+  await claimProfile(db, userId, email);
+  return userId;
+}
+
+/**
+ * En forening kan have oprettet profilen på forhånd (import eller online indmeldelse). Når e-mailen er bekræftet første gang,
+ * overtager login'et den, så medlemskab og børn følger med. Har login'et allerede en profil, flettes der ikke automatisk
+ * (se findMergeOffers i merge.ts). Børneprofiler og profiler uden fødselsdato, der ikke er værger, overtages aldrig.
+ */
+export async function claimProfile(db: Db, userId: string, email: string) {
+  const [mine] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.userId, userId));
+  if (mine) return;
+  const eligible = await unclaimedProfilesByEmail(db, email);
+  if (eligible.length === 0) return;
+  try {
+    const pick = eligible.find((c) => c.isGuardian) ?? eligible[0];
+    await db.update(profiles).set({ userId }).where(and(eq(profiles.id, pick.id), isNull(profiles.userId)));
+    // Er der flere med samme fornavn, flettes de ind i den overtagne. Det er nye profiler uden egne data, så intet afsløres.
+    for (const c of eligible) if (c.id !== pick.id && firstNameOf(c.firstName) === firstNameOf(pick.firstName)) await mergeProfile(db, pick.id, c.id);
+  } catch (e) {
+    console.error("Kunne ikke overtage profil", e);
+  }
 }
 
 /** Opretter en session. Returnerer værdien til cookien. */

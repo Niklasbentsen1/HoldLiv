@@ -4,7 +4,8 @@ import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { Shell, ErrorBox } from "../../components/Shell";
 import { Avatar, Crest, PageHead } from "../../components/ui";
-import { addChild, addGuardian, leaveWaitlistAction } from "../actions";
+import { addChild, addGuardian, leaveWaitlistAction, mergeOfferAction } from "../actions";
+import { findMergeOffers } from "../../auth/merge";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +22,26 @@ export default async function Family({ searchParams }: { searchParams: Promise<{
   const { ctx } = await requireSession("/familie");
   const kids = await listFamily(db, ctx);
   const waiting = await myWaitlistPositions(db, ctx);
+  const offers = await findMergeOffers(db, ctx.userId);
 
   return (
     <Shell active="/familie" ctx={ctx}>
       <PageHead title="Familie" sub="Børn har ikke eget login. Du melder til og fra for dem, og du kan skifte til dem på overblikket." />
       <ErrorBox message={fejl} />
+      {offers.map((o) => (
+        <form key={o.profileId} action={mergeOfferAction} className="card stack" style={{ marginBottom: 12 }}>
+          <input type="hidden" name="profileId" value={o.profileId} />
+          <strong>Er det dig?</strong>
+          <span>
+            {o.clubs.length ? o.clubs.join(", ") : "En forening"} har registreret dig som {o.name}
+            {o.children > 0 ? ` med ${o.children} ${o.children === 1 ? "barn" : "børn"}` : ""}. Siger du ja, samles det med din profil, og foreningen kan se dine oplysninger.
+          </span>
+          <span className="inline">
+            <button name="intent" value="yes" className="primary">Ja, det er mig</button>
+            <button name="intent" value="no" className="link">Nej</button>
+          </span>
+        </form>
+      ))}
       {venteliste && <p className="pill">Holdet er fuldt. Du står på ventelisten og får besked, når der bliver en plads.</p>}
       {waiting
         .filter((w) => w.profileId === ctx.profileId)
