@@ -164,7 +164,8 @@ async function teamRecipients(db: Db, teamId: string, now: Date, exceptUserId: s
   return all.filter((r) => r.userId !== exceptUserId);
 }
 
-const label = (e: Pick<EventRow, "type" | "title">) => (e.title === TYPE_LABEL[e.type] ? e.title : `${TYPE_LABEL[e.type]}: ${e.title}`);
+const label = (e: Pick<EventRow, "type" | "title">) =>
+  e.title.toLowerCase().startsWith(TYPE_LABEL[e.type].toLowerCase()) ? e.title : `${TYPE_LABEL[e.type]}: ${e.title}`;
 
 /** Fortæl holdets familier, at en aktivitet er ændret. Aktiviteter der allerede er begyndt, giver ingen besked. */
 async function announceChange(db: Db, deliver: Deliver, ctx: AccessContext, before: EventRow, after: EventRow) {

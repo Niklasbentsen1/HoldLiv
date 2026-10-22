@@ -186,6 +186,33 @@ describe("aflysninger", () => {
     expect(mails[0].text).toMatch(/er ikke aflyst alligevel\./);
   });
 
+  it("gentagen aflysning giver ingen ny besked og rører ikke den første aflysning", async () => {
+    const mette = await ctxOf("mette");
+    const id = demo.events.u9Match.id;
+    await setEventCancelledNotifying(db, mette, deliver, id, true);
+    const [{ cancelled_at: first }] = await sql`select cancelled_at from events where id = ${id}`;
+    mails.length = 0;
+    const again = await setEventCancelledNotifying(db, await ctxOf("mette"), { ...deliver }, id, true);
+    expect(again).toEqual([]);
+    expect(mails).toEqual([]);
+    const [{ cancelled_at: after }] = await sql`select cancelled_at from events where id = ${id}`;
+    expect(after).toEqual(first);
+    await setEventCancelledNotifying(db, mette, deliver, id, false);
+    mails.length = 0;
+    await setEventCancelledNotifying(db, mette, deliver, id, false);
+    expect(mails).toEqual([]);
+  });
+
+  it("genoptager man resten af en serie, høres kun om dem, der var aflyst", async () => {
+    const mette = await ctxOf("mette");
+    await setEventCancelledNotifying(db, mette, deliver, training().id, true);
+    mails.length = 0;
+    const res = await setEventCancelledNotifying(db, mette, deliver, training().id, false, "following");
+    expect(res).toHaveLength(1);
+    expect(mails).toHaveLength(6);
+    expect(mails[0].subject).toMatch(/^Genoptaget: Træning, U9 piger$/);
+  });
+
   it("samler en hel serie i én besked pr. familie", async () => {
     const mette = await ctxOf("mette");
     const res = await setEventCancelledNotifying(db, mette, deliver, training().id, true, "following");
