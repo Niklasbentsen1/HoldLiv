@@ -58,6 +58,7 @@ export async function listAudit(db: Db, ctx: AccessContext, clubId: string, befo
 export const AUDIT_LABELS: Record<string, string> = {
   "login.ok": "Loggede ind",
   "members.imported": "Importerede medlemmer",
+  "arrears.block": "Rettede spærring ved restance",
   "signup.settings": "Rettede indstillinger for online indmeldelse",
   "signup.approved": "Godkendte en ansøgning om medlemskab",
   "signup.rejected": "Afviste en ansøgning om medlemskab",

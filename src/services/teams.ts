@@ -6,6 +6,8 @@ import { clubMemberships, clubs, guardianships, profiles, teamMembers, teams, te
 import { assertCan, can, canActAs, type AccessContext } from "../auth/permissions";
 import { loadProfileFacts, loadTeamFacts, loadTeamMemberIds } from "../auth/context";
 import { addToWaitlist, lockTeamSpots, teamSpots } from "./waitlist";
+import { blockedProfileIds } from "./arrears";
+import { localDate } from "../lib/money";
 
 export const newInviteCode = () => randomBytes(6).toString("base64url");
 
@@ -150,6 +152,9 @@ export async function joinTeamByInvite(db: Db, ctx: AccessContext, code: string,
   assertCan(ctx, { action: "profile.actAs", profileId });
   const team = await findTeamByInvite(db, code);
   if (!team) throw new Error("Invitationslinket er ikke gyldigt længere. Bed træneren om et nyt.");
+  if ((await blockedProfileIds(db, team.clubId, [profileId], localDate(ctx.now))).has(profileId)) {
+    throw new Error("Der er en forfalden betaling til foreningen. Betal den under Betaling, så kan du tilmelde dig igen.");
+  }
   const waitlisted = await db.transaction(async (tx) => {
     const spots = await lockTeamSpots(tx, team.id);
     const [already] = await tx

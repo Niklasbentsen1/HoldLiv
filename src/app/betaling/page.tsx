@@ -62,6 +62,11 @@ export default async function Payments({ searchParams }: { searchParams: Promise
                   </span>
                 </span>
                 <span className="amount">{kr(c.amountOre)}</span>
+                {c.status === "paid" && (
+                  <a href={`/betaling/pdf/${c.id}`} target="_blank" className="small">
+                    Kvittering (PDF)
+                  </a>
+                )}
                 <ChargeTag status={c.status} />
               </li>
             ))}
