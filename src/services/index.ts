@@ -16,6 +16,7 @@ import {
 } from "../db/schema";
 import { assertCan, isMinor, type AccessContext } from "../auth/permissions";
 import { loadEventFacts, loadProfileFacts, loadTeamFacts } from "../auth/context";
+import { newInviteCode } from "./teams";
 
 export interface PersonInput {
   firstName: string;
@@ -35,6 +36,17 @@ export async function registerUser(db: Db, email: string, person: PersonInput) {
       .returning();
     return { user, profile };
   });
+}
+
+/** Første login: et login uden profil får sin egen profil. */
+export async function createProfileForUser(db: Db, userId: string, person: PersonInput) {
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  if (!user) throw new Error("Login'et findes ikke");
+  const [profile] = await db
+    .insert(profiles)
+    .values({ ...person, email: person.email ?? user.email, userId, createdByUserId: userId })
+    .returning();
+  return profile;
 }
 
 /** Forælderen opretter sit barns profil og bliver automatisk værge. */
@@ -100,7 +112,7 @@ export async function revokeClubAdmin(db: Db, ctx: AccessContext, clubId: string
 
 export async function createTeam(db: Db, ctx: AccessContext, clubId: string, name: string, season?: string) {
   assertCan(ctx, { action: "team.create", clubId });
-  const [team] = await db.insert(teams).values({ clubId, name, season }).returning();
+  const [team] = await db.insert(teams).values({ clubId, name, season, inviteCode: newInviteCode() }).returning();
   return team;
 }
 
@@ -140,9 +152,10 @@ export interface EventInput {
   type: "training" | "match" | "other";
   title: string;
   startsAt: Date;
-  endsAt?: Date;
-  location?: string;
-  responseDeadline?: Date;
+  endsAt?: Date | null;
+  location?: string | null;
+  description?: string | null;
+  responseDeadline?: Date | null;
 }
 
 export async function createEvent(db: Db, ctx: AccessContext, teamId: string, input: EventInput) {
@@ -187,10 +200,14 @@ export async function listUpcomingEvents(db: Db, ctx: AccessContext, actingProfi
       type: events.type,
       title: events.title,
       startsAt: events.startsAt,
+      endsAt: events.endsAt,
       location: events.location,
+      responseDeadline: events.responseDeadline,
+      cancelledAt: events.cancelledAt,
       teamId: teams.id,
       teamName: teams.name,
       status: eventResponses.status,
+      comment: eventResponses.comment,
     })
     .from(events)
     .innerJoin(teams, eq(teams.id, events.teamId))
@@ -222,3 +239,6 @@ export async function describeRoles(db: Db, ctx: AccessContext) {
     ...wardRows.map((r) => ({ kind: "parent" as const, label: `Forælder til ${r.name}` })),
   ];
 }
+
+export * from "./teams";
+export * from "./calendar";

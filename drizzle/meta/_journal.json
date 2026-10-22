@@ -8,6 +8,13 @@
       "when": 1792654513112,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792656239614,
+      "tag": "0001_login_kalender",
+      "breakpoints": true
     }
   ]
 }

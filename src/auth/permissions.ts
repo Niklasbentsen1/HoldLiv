@@ -20,6 +20,8 @@ export interface AccessContext {
   coachTeams: ReadonlySet<TeamId>;
   /** Børneprofiler som login'et aktuelt er værge for (under 18 år). */
   wards: ReadonlySet<ProfileId>;
+  /** Tidspunktet tjekket gælder for, fx til svarfrister. */
+  now: Date;
 }
 
 /** Fakta om en profil, som et tjek kan have brug for. */
@@ -38,6 +40,10 @@ export interface TeamFacts {
 export interface EventFacts {
   teamId: TeamId;
   clubId: ClubId;
+  startsAt?: Date;
+  /** Svarfrist. Uden frist lukker svarene, når aktiviteten starter. */
+  responseDeadline?: Date | null;
+  cancelled?: boolean;
 }
 
 export type Permission =
@@ -91,9 +97,13 @@ export function can(ctx: AccessContext, perm: Permission): boolean {
 
     case "event.respond": {
       const { event, profile } = perm;
-      if (!profile.teamIds.includes(event.teamId)) return false;
-      // Spilleren selv eller forælderen, eller træner/admin der registrerer fremmøde.
-      return canActAs(ctx, profile.profileId) || leadsTeam(ctx, event);
+      if (event.cancelled || !profile.teamIds.includes(event.teamId)) return false;
+      // Træner/admin kan altid registrere fremmøde, også efter fristen.
+      if (leadsTeam(ctx, event)) return true;
+      // Spilleren selv eller forælderen, indtil svarfristen.
+      const closesAt = event.responseDeadline ?? event.startsAt;
+      const open = !closesAt || ctx.now.getTime() < closesAt.getTime();
+      return canActAs(ctx, profile.profileId) && open;
     }
 
     case "profile.view":

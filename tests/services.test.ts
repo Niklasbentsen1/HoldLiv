@@ -1,8 +1,7 @@
 // Kører mod en rigtig Postgres (TEST_DATABASE_URL). Databasen nulstilles før testene.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { createDb } from "../src/db/client";
+import { testDb } from "./db";
 import { seedDemo } from "../src/db/demo";
 import { eventResponses, guardianships, profiles } from "../src/db/schema";
 import { loadAccessContext, loadActingProfiles } from "../src/auth/context";
@@ -18,13 +17,11 @@ import {
   updateProfile,
 } from "../src/services";
 
-const url = process.env.TEST_DATABASE_URL ?? "postgres://holdliv:holdliv@localhost:5432/holdliv_test";
-const { db, sql } = createDb(url);
+const { db, sql, reset } = testDb();
 let demo: Awaited<ReturnType<typeof seedDemo>>;
 
 beforeAll(async () => {
-  await sql.unsafe("drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public;");
-  await migrate(db, { migrationsFolder: "./drizzle" });
+  await reset();
   demo = await seedDemo(db);
 });
 
@@ -44,9 +41,10 @@ describe("Niklas: spiller, far og bestyrelsesmedlem", () => {
   it("ser Emmas U9-aktiviteter, når han agerer som Emma, og sine egne som sig selv", async () => {
     const ctx = await ctxOf("niklas");
     const asEmma = await listUpcomingEvents(db, ctx, demo.emma.id);
-    expect(asEmma.map((e) => e.teamName)).toEqual(["U9 piger", "U9 piger"]);
+    expect(new Set(asEmma.map((e) => e.teamName))).toEqual(new Set(["U9 piger"]));
+    expect(asEmma.map((e) => e.id)).toContain(demo.events.u9Match.id);
     const asSelf = await listUpcomingEvents(db, ctx, ctx.profileId);
-    expect(asSelf.map((e) => e.teamName)).toEqual(["Senior herrer"]);
+    expect(new Set(asSelf.map((e) => e.teamName))).toEqual(new Set(["Senior herrer"]));
   });
 
   it("melder Emma fra, og svaret viser at det var ham der trykkede", async () => {

@@ -13,6 +13,7 @@ const ctx = (over: Partial<AccessContext> = {}): AccessContext => ({
   adminClubs: new Set(),
   coachTeams: new Set(),
   wards: new Set(),
+  now: new Date("2026-10-22T12:00:00Z"),
   ...over,
 });
 
@@ -100,6 +101,35 @@ describe("forælder", () => {
     expect(can(parent, { action: "event.manage", event: U9 })).toBe(false);
     expect(can(parent, { action: "event.respond", event: U9, profile: stranger })).toBe(false);
     expect(can(parent, { action: "profile.view", profile: stranger })).toBe(false);
+  });
+});
+
+describe("svarfrist og aflysning", () => {
+  const parent = ctx({ wards: new Set(["child"]) });
+  const coach = ctx({ coachTeams: new Set(["u9"]) });
+  const closed = { ...U9, responseDeadline: new Date("2026-10-22T10:00:00Z") };
+  const open = { ...U9, responseDeadline: new Date("2026-10-22T14:00:00Z") };
+
+  it("forælderen kan svare før fristen, men ikke efter", () => {
+    expect(can(parent, { action: "event.respond", event: open, profile: child })).toBe(true);
+    expect(can(parent, { action: "event.respond", event: closed, profile: child })).toBe(false);
+  });
+
+  it("uden frist lukker svarene, når aktiviteten starter", () => {
+    const started = { ...U9, startsAt: new Date("2026-10-22T11:00:00Z") };
+    const later = { ...U9, startsAt: new Date("2026-10-23T11:00:00Z") };
+    expect(can(parent, { action: "event.respond", event: started, profile: child })).toBe(false);
+    expect(can(parent, { action: "event.respond", event: later, profile: child })).toBe(true);
+  });
+
+  it("træneren kan registrere fremmøde efter fristen", () => {
+    expect(can(coach, { action: "event.respond", event: closed, profile: child })).toBe(true);
+  });
+
+  it("ingen kan svare på en aflyst aktivitet", () => {
+    const cancelled = { ...U9, cancelled: true };
+    expect(can(parent, { action: "event.respond", event: cancelled, profile: child })).toBe(false);
+    expect(can(coach, { action: "event.respond", event: cancelled, profile: child })).toBe(false);
   });
 });
 

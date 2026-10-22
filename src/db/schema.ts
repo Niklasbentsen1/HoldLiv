@@ -9,6 +9,7 @@
 import { sql } from "drizzle-orm";
 import {
   date,
+  integer,
   pgEnum,
   pgTable,
   primaryKey,
@@ -34,6 +35,36 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   createdAt: createdAt(),
 });
+
+// Login med engangskode/link på e-mail. Kun hashes gemmes, aldrig selve koden.
+export const loginTokens = pgTable(
+  "login_tokens",
+  {
+    id: id(),
+    email: text("email").notNull(),
+    codeHash: text("code_hash").notNull(),
+    linkHash: text("link_hash").notNull().unique(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("login_tokens_email_idx").on(t.email, t.createdAt)],
+);
+
+// Aktive sessioner. id er sha256 af cookie-værdien, så et læk af databasen ikke giver adgang.
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)],
+);
 
 export const profiles = pgTable(
   "profiles",
@@ -121,6 +152,8 @@ export const teams = pgTable(
       .references(() => clubs.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     season: text("season"),
+    // Kode til holdets invitationslink (/join/<kode>). Kan nulstilles af træner/admin.
+    inviteCode: text("invite_code").notNull().unique(),
     createdAt: createdAt(),
   },
   (t) => [index("teams_club_idx").on(t.clubId)],
@@ -154,14 +187,19 @@ export const events = pgTable(
       .references(() => teams.id, { onDelete: "cascade" }),
     type: eventType("type").notNull(),
     title: text("title").notNull(),
+    description: text("description"),
     location: text("location"),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }),
     responseDeadline: timestamp("response_deadline", { withTimezone: true }),
+    // Faste træninger oprettes som en serie af enkelte aktiviteter med samme series_id.
+    seriesId: uuid("series_id"),
+    // Aflyste aktiviteter bliver stående, så alle kan se at de er aflyst.
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
-  (t) => [index("events_team_starts_idx").on(t.teamId, t.startsAt)],
+  (t) => [index("events_team_starts_idx").on(t.teamId, t.startsAt), index("events_series_idx").on(t.seriesId)],
 );
 
 // Til- og frameldinger. respondedByUserId er login'et der trykkede,

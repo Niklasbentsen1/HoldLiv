@@ -35,6 +35,7 @@ export async function loadAccessContext(db: Db, userId: string, today = new Date
     adminClubs: new Set(admin.map((r) => r.clubId)),
     coachTeams: new Set(coach.map((r) => r.teamId)),
     wards: new Set(children.filter((c) => isMinor(c.birthDate, today)).map((c) => c.id)),
+    now: today,
   };
 }
 
@@ -58,9 +59,19 @@ export async function loadTeamMemberIds(db: Db, teamId: string): Promise<string[
 }
 
 export async function loadEventFacts(db: Db, eventId: string): Promise<EventFacts> {
-  const [event] = await db.select({ teamId: events.teamId, clubId: events.clubId }).from(events).where(eq(events.id, eventId));
+  const [event] = await db
+    .select({
+      teamId: events.teamId,
+      clubId: events.clubId,
+      startsAt: events.startsAt,
+      responseDeadline: events.responseDeadline,
+      cancelledAt: events.cancelledAt,
+    })
+    .from(events)
+    .where(eq(events.id, eventId));
   if (!event) throw new Error("Aktiviteten findes ikke");
-  return event;
+  const { cancelledAt, ...facts } = event;
+  return { ...facts, cancelled: cancelledAt !== null };
 }
 
 /** Profiler login'et kan skifte til i appen: sig selv og sine børn. */
