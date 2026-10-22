@@ -67,6 +67,7 @@ export async function listPostTargets(db: Db, ctx: AccessContext, kind: PostKind
 }
 
 async function isMinorUser(db: Db, ctx: AccessContext) {
+  if (ctx.wards.size > 0) return false; // en forælder er voksen, også uden fødselsdato
   const [me] = await db.select({ birthDate: profiles.birthDate }).from(profiles).where(eq(profiles.id, ctx.profileId));
   return isMinor(me?.birthDate ?? null, ctx.now);
 }
