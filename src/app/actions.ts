@@ -35,6 +35,14 @@ import {
   setFeeArchived,
   setTeamDefaultFee,
   saveModuleMatrix as saveModules,
+  assignTask,
+  claimTask,
+  createFruitList,
+  createTask,
+  deleteTask,
+  distributeOpenTasks,
+  releaseTask,
+  setTaskDone,
   bookSeat,
   cancelOffer,
   cancelRideRequest,
@@ -268,6 +276,34 @@ export const requestRideAction = async (f: FormData) =>
   carpool(f, (ctx) => requestRide(db, ctx, str(f, "eventId"), str(f, "profileId"), opt(f, "note")));
 export const cancelRideRequestAction = async (f: FormData) =>
   carpool(f, (ctx) => cancelRideRequest(db, ctx, str(f, "eventId"), str(f, "profileId")));
+
+// --- Frugt og opgaver ---
+
+async function tasksAction(formData: FormData, fn: (ctx: Awaited<ReturnType<typeof requireSession>>["ctx"]) => Promise<unknown>) {
+  const { ctx } = await requireSession();
+  const back = `/hold/${str(formData, "teamId")}/opgaver`;
+  await attempt(back, () => fn(ctx));
+  revalidatePath(back);
+  redirect(back);
+}
+
+export const createTaskAction = async (f: FormData) =>
+  tasksAction(f, (ctx) =>
+    createTask(db, ctx, str(f, "teamId"), {
+      kind: str(f, "kind") === "fruit" ? "fruit" : "task",
+      title: str(f, "title"),
+      note: opt(f, "note"),
+      eventId: opt(f, "eventId"),
+    }),
+  );
+export const createFruitListAction = async (f: FormData) =>
+  tasksAction(f, (ctx) => createFruitList(db, ctx, str(f, "teamId"), f.getAll("eventId").map(String)));
+export const distributeTasksAction = async (f: FormData) => tasksAction(f, (ctx) => distributeOpenTasks(db, ctx, str(f, "teamId")));
+export const claimTaskAction = async (f: FormData) => tasksAction(f, (ctx) => claimTask(db, ctx, str(f, "taskId"), str(f, "profileId")));
+export const releaseTaskAction = async (f: FormData) => tasksAction(f, (ctx) => releaseTask(db, ctx, str(f, "taskId")));
+export const doneTaskAction = async (f: FormData) => tasksAction(f, (ctx) => setTaskDone(db, ctx, str(f, "taskId"), str(f, "done") === "1"));
+export const assignTaskAction = async (f: FormData) => tasksAction(f, (ctx) => assignTask(db, ctx, str(f, "taskId"), opt(f, "profileId")));
+export const deleteTaskAction = async (f: FormData) => tasksAction(f, (ctx) => deleteTask(db, ctx, str(f, "taskId")));
 
 // --- Kalender ---
 

@@ -165,3 +165,7 @@ Hvert hold har sine egne moduler (samkørsel, frugt og opgaver, bødekasse). Bes
 ### Modul: samkørsel
 
 Pr. aktivitet kan voksne tilbyde pladser (mødested, afgang, besked), forældre sætter deres barn på en bil eller melder "mangler en lift", og føreren og trænere kan sætte spillere på; føreren kan kun tage spillere med, der har bedt om en lift, og flytter aldrig et barn fra en anden bil. Pladser tælles med lås på bilen, så ingen overbookes. Førerens nummer vises for passagererne, deres forældre og trænere; forældrenes numre vises for føreren og trænere. Kode: `src/services/carpool.ts`, side: `/hold/[id]/samkorsel`.
+
+### Modul: frugt og opgaver
+
+Frugtliste til kampe og træninger og opgaver som kridtning og oprydning. En opgave hører til en familie (en spiller og dennes værger; søskende på samme hold er én familie). Træneren laver frugtlister og opgaver og kan fordele dem retfærdigt: hver opgave går til den familie, der har haft færrest af samme slags (ved lighed den der længst har været uden), og familier der har meldt fra til aktiviteten springes over (`src/modules/fairness.ts`). Familier kan selv tage ledige opgaver, give dem fra sig og sætte dem som udført. Alle på holdet kan se, hvem der har haft hvad. Kode: `src/services/tasks.ts`, side: `/hold/[id]/opgaver`.

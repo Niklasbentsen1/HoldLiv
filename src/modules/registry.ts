@@ -39,7 +39,7 @@ export const MODULES: Registry = {
     description: "Frugtliste, oprydning og kridtning fordelt retfærdigt på familierne.",
     path: "opgaver",
     fields: [],
-    available: false,
+    available: true,
   },
   fines: {
     key: "fines",
