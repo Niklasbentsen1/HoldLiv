@@ -6,7 +6,7 @@
 import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { clubMemberships, clubs, posts, profiles, teamMembers, teams } from "../db/schema";
-import { type AccessContext } from "../auth/permissions";
+import { isMinor, type AccessContext } from "../auth/permissions";
 import { notifyUsers, recipientsOfPlayers, type Deliver } from "./notifications";
 
 export type PostKind = "news" | "board";
@@ -61,7 +61,14 @@ export async function myScopes(db: Db, ctx: AccessContext): Promise<Scope[]> {
 /** Hvor man må skrive: nyheder kun som leder, opslag overalt hvor man hører til. */
 export async function listPostTargets(db: Db, ctx: AccessContext, kind: PostKind) {
   const scopes = await myScopes(db, ctx);
-  return kind === "news" ? scopes.filter((s) => s.lead) : scopes;
+  const mine = kind === "news" ? scopes.filter((s) => s.lead) : scopes;
+  // Mindreårige ser ingen formular; ledelsen skriver altid, også uden fødselsdato.
+  return (await isMinorUser(db, ctx)) ? mine.filter((s) => s.lead) : mine;
+}
+
+async function isMinorUser(db: Db, ctx: AccessContext) {
+  const [me] = await db.select({ birthDate: profiles.birthDate }).from(profiles).where(eq(profiles.id, ctx.profileId));
+  return isMinor(me?.birthDate ?? null, ctx.now);
 }
 
 export interface NewPost {
@@ -90,6 +97,9 @@ export async function createPost(db: Db, ctx: AccessContext, deliver: Deliver, i
   if (body.length > MAX_BODY) throw new Error(`Teksten er for lang (højst ${MAX_BODY} tegn).`);
   const scope = (await myScopes(db, ctx)).find((s) => s.key === input.scope);
   if (!scope) throw new Error("Du hører ikke til der.");
+  // Som i chatten: en mindreårig med eget login (eller uden fødselsdato) kan læse, men ikke skrive offentligt.
+  // Ledelsen er valgt som træner/admin og skriver altid.
+  if (!scope.lead && (await isMinorUser(db, ctx))) throw new Error("Kun voksne kan skrive opslag og nyheder.");
   if (input.kind === "news" && !scope.lead) throw new Error("Kun ledelsen kan skrive nyheder.");
   if (input.pinned && !scope.lead) throw new Error("Kun ledelsen kan fastgøre opslag.");
 

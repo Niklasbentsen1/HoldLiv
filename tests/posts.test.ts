@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { testDb } from "./db";
 import { seedDemo } from "../src/db/demo";
 import { loadAccessContext } from "../src/auth/context";
-import { createPost, deletePost, listFeed, listPostTargets, setPostPinned, type Deliver } from "../src/services";
+import { addClubMember, grantClubAdmin, registerUser, createPost, deletePost, listFeed, listPostTargets, setPostPinned, type Deliver } from "../src/services";
 
 const { db, sql, reset } = testDb();
 let demo: Awaited<ReturnType<typeof seedDemo>>;
@@ -78,6 +78,31 @@ describe("nyheder", () => {
     await setPostPinned(db, karen, a.id, true);
     expect((await titles("sofie", "news"))[0]).toBe("Generalforsamling");
     await expect(setPostPinned(db, await ctxOf("sofie"), a.id, false)).rejects.toThrow(/Kun ledelsen/);
+  });
+});
+
+describe("børn med eget login", () => {
+  it("kan ikke skrive opslag, heller ikke uden fødselsdato", async () => {
+    const karen = await ctxOf("karen");
+    for (const [email, birthDate] of [["teen2@holdliv.test", "2030-01-01"], ["nobd2@holdliv.test", undefined]] as const) {
+      const u = await registerUser(db, email, { firstName: "Barn", lastName: "Test", birthDate });
+      await addClubMember(db, karen, demo.club.id, u.profile.id);
+      const ctx = await loadAccessContext(db, u.user.id);
+      await expect(createPost(db, ctx, deliver, { kind: "board", scope: club(), title: "Hej", body: "Hej" })).rejects.toThrow(/Kun voksne/);
+      expect(await listPostTargets(db, ctx, "board")).toEqual([]);
+    }
+  });
+});
+
+describe("ledelsen uden fødselsdato", () => {
+  it("kan stadig skrive nyheder", async () => {
+    const karen = await ctxOf("karen");
+    const u = await registerUser(db, "nobd-admin@holdliv.test", { firstName: "Admin", lastName: "Uden" });
+    await grantClubAdmin(db, karen, demo.club.id, u.profile.id);
+    const ctx = await loadAccessContext(db, u.user.id);
+    expect((await listPostTargets(db, ctx, "news")).length).toBeGreaterThan(0);
+    await createPost(db, ctx, deliver, { kind: "news", scope: club(), title: "Fra ny admin", body: "Hej" });
+    expect(await titles("karen", "news")).toContain("Fra ny admin");
   });
 });
 
