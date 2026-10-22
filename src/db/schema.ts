@@ -470,3 +470,45 @@ export const fines = pgTable(
   },
   (t) => [index("fines_team_profile_idx").on(t.teamId, t.profileId)],
 );
+
+// --- Beskeder: mail, SMS og (senere) push ---
+
+// Hvilke beskeder et login vil have på hvilken kanal. Uden række gælder standarden i src/lib/notify.ts.
+export const notificationPrefs = pgTable(
+  "notification_prefs",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    channel: text("channel").notNull(),
+    enabled: boolean("enabled").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.kind, t.channel] })],
+);
+
+// Alt hvad der er sendt (eller forsøgt sendt) til et login. Giver overblik, og dedupe_key sørger for, at den samme
+// besked ikke sendes to gange til samme login på samme kanal.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    channel: text("channel").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    dedupeKey: text("dedupe_key"),
+    // sent, failed (udbyderen fejlede) eller skipped (kanalen er ikke sat op eller mangler modtager)
+    status: text("status").notNull(),
+    error: text("error"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("notifications_user_idx").on(t.userId, t.createdAt),
+    uniqueIndex("notifications_dedupe_unique").on(t.userId, t.channel, t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
+  ],
+);

@@ -17,8 +17,10 @@ import {
   removeTeamMember,
   respondToEvent,
   rotateInviteCode,
-  setEventCancelled,
-  updateEvent,
+  setEventCancelledNotifying,
+  setNotificationPref,
+  updateEventNotifying,
+  updateMyPhone,
   type EventInput,
   cancelCharge,
   completeCheckout,
@@ -65,6 +67,8 @@ import { parseKr, type FeeInterval } from "../lib/money";
 import { getPaymentProvider, mockPaymentsEnabled } from "../lib/payments";
 import { db } from "../lib/db";
 import { sendLoginMail, sendMail } from "../lib/mail";
+import { CHANNELS, KINDS } from "../lib/notify";
+import { getSmsSender } from "../lib/sms";
 import { endSession, getSession, getUserId, requireSession, safeNext, setActingProfile, startSession } from "../lib/session";
 import { parseLocalDateTime } from "../lib/time";
 
@@ -81,6 +85,10 @@ async function attempt(back: string, fn: () => Promise<unknown>) {
     if (!(e instanceof ForbiddenError || e instanceof LoginError)) console.error(e);
     redirect(`${back}${back.includes("?") ? "&" : "?"}fejl=${encodeURIComponent(message)}`);
   }
+}
+
+async function deliverFromEnv() {
+  return { mail: sendMail, sms: getSmsSender(), baseUrl: await origin() };
 }
 
 // --- Login ---
@@ -375,7 +383,7 @@ export async function newEvent(formData: FormData) {
 export async function editEvent(formData: FormData) {
   const { ctx } = await requireSession();
   const eventId = str(formData, "eventId");
-  await attempt(`/aktivitet/${eventId}/ret`, () => updateEvent(db, ctx, eventId, eventInput(formData)));
+  await attempt(`/aktivitet/${eventId}/ret`, async () => updateEventNotifying(db, ctx, await deliverFromEnv(), eventId, eventInput(formData)));
   redirect(`/aktivitet/${eventId}`);
 }
 
@@ -384,7 +392,7 @@ export async function cancelEvent(formData: FormData) {
   const eventId = str(formData, "eventId");
   const cancelled = str(formData, "cancelled") === "1";
   const scope = str(formData, "scope") === "following" ? "following" : "one";
-  await attempt(`/aktivitet/${eventId}`, () => setEventCancelled(db, ctx, eventId, cancelled, scope));
+  await attempt(`/aktivitet/${eventId}`, async () => setEventCancelledNotifying(db, ctx, await deliverFromEnv(), eventId, cancelled, scope));
   revalidatePath(`/aktivitet/${eventId}`);
 }
 
@@ -535,4 +543,19 @@ export async function completeTestPayment(formData: FormData) {
     await completeCheckout(db, sessionId);
   });
   redirect(`/betaling/kvittering?session=${encodeURIComponent(sessionId)}`);
+}
+
+// --- Indstillinger: beskeder ---
+
+export async function saveNotificationPrefs(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/indstillinger", async () => {
+    await updateMyPhone(db, ctx, str(formData, "phone"));
+    for (const kind of Object.keys(KINDS)) {
+      for (const channel of CHANNELS) {
+        await setNotificationPref(db, ctx, kind, channel, formData.get(`${kind}:${channel}`) === "on");
+      }
+    }
+  });
+  redirect("/indstillinger?gemt=1");
 }
