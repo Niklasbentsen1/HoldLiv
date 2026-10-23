@@ -117,6 +117,11 @@ import {
   setTeamDefaultFee,
   saveModuleMatrix as saveModules,
   addFundEntry,
+  closePoll,
+  createPoll,
+  deletePoll,
+  vote,
+  withdrawVote,
   cancelFine,
   cancelFundEntry,
   createFineType,
@@ -727,6 +732,39 @@ export const addFundEntryAction = async (f: FormData) =>
     }),
   );
 export const cancelFundEntryAction = async (f: FormData) => teamFundAction(f, (ctx) => cancelFundEntry(db, ctx, str(f, "entryId")));
+
+// --- Afstemninger ---
+
+async function pollAction(formData: FormData, fn: (ctx: Awaited<ReturnType<typeof requireSession>>["ctx"]) => Promise<unknown>) {
+  const { ctx } = await requireSession();
+  const back = `/hold/${str(formData, "teamId")}/afstemninger`;
+  await attempt(back, () => fn(ctx));
+  revalidatePath(back);
+  redirect(back);
+}
+
+export const createPollAction = async (f: FormData) =>
+  pollAction(f, async (ctx) =>
+    createPoll(
+      db,
+      ctx,
+      str(f, "teamId"),
+      {
+        question: str(f, "question"),
+        description: opt(f, "description"),
+        options: str(f, "options").split("\n"),
+        multiple: f.get("multiple") === "1",
+        anonymous: f.get("anonymous") === "1",
+        closesAt: opt(f, "closesAt") ? parseLocalDateTime(str(f, "closesAt")) : null,
+      },
+      await deliverFromEnv(),
+    ),
+  );
+export const votePollAction = async (f: FormData) =>
+  pollAction(f, (ctx) => vote(db, ctx, str(f, "pollId"), f.getAll("optionId").map(String), str(f, "profileId")));
+export const withdrawVoteAction = async (f: FormData) => pollAction(f, (ctx) => withdrawVote(db, ctx, str(f, "pollId"), str(f, "profileId")));
+export const closePollAction = async (f: FormData) => pollAction(f, (ctx) => closePoll(db, ctx, str(f, "pollId")));
+export const deletePollAction = async (f: FormData) => pollAction(f, (ctx) => deletePoll(db, ctx, str(f, "pollId")));
 
 // --- Kampe: opstilling, resultat, referat ---
 

@@ -36,6 +36,9 @@ import {
   savedCards,
   teamMembers,
   teamFundEntries,
+  pollOptions,
+  pollVotes,
+  polls,
   teamTasks,
   volunteerShifts,
   teams,
@@ -104,7 +107,7 @@ async function exportProfile(db: Db, profileId: string) {
     .select({ firstName: profiles.firstName, lastName: profiles.lastName, birthDate: profiles.birthDate, email: profiles.email, phone: profiles.phone, createdAt: profiles.createdAt })
     .from(profiles)
     .where(eq(profiles.id, profileId));
-  const [memberships, roles, teamRows, responses, myCharges, offers, rides, requests, tasks, myFines, matchLineups, matchEventRows, written, myPosts, myConsents, guardians, myShifts, myContracts, myCertificates, myFundDeposits] = await Promise.all([
+  const [memberships, roles, teamRows, responses, myCharges, offers, rides, requests, tasks, myFines, matchLineups, matchEventRows, written, myPosts, myConsents, guardians, myShifts, myContracts, myCertificates, myFundDeposits, myPollVotes] = await Promise.all([
     db
       .select({ club: clubs.name, status: clubMemberships.status, joinedAt: clubMemberships.joinedAt, leftAt: clubMemberships.leftAt, exempt: clubMemberships.exempt })
       .from(clubMemberships)
@@ -161,6 +164,12 @@ async function exportProfile(db: Db, profileId: string) {
       .select({ description: teamFundEntries.description, amountOre: teamFundEntries.amountOre, entryDate: teamFundEntries.entryDate })
       .from(teamFundEntries)
       .where(eq(teamFundEntries.profileId, profileId)),
+    db
+      .select({ question: polls.question, answer: pollOptions.label, votedAt: pollVotes.createdAt })
+      .from(pollVotes)
+      .innerJoin(polls, eq(polls.id, pollVotes.pollId))
+      .innerJoin(pollOptions, eq(pollOptions.id, pollVotes.optionId))
+      .where(eq(pollVotes.profileId, profileId)),
   ]);
   const paymentRows = myCharges.length
     ? await db
@@ -187,6 +196,7 @@ async function exportProfile(db: Db, profileId: string) {
     contracts: myContracts,
     childCertificates: myCertificates,
     teamFundDeposits: myFundDeposits,
+    pollVotes: myPollVotes,
   };
 }
 
@@ -291,6 +301,7 @@ async function anonymize(tx: Tx, profileIds: string[], now: Date) {
   await tx.delete(matchEvents).where(and(inArray(matchEvents.profileId, profileIds), inArray(matchEvents.kind, ["yellow", "red"])));
   await tx.update(matchEvents).set({ profileId: null }).where(inArray(matchEvents.profileId, profileIds));
   await tx.update(matchEvents).set({ assistProfileId: null }).where(inArray(matchEvents.assistProfileId, profileIds));
+  await tx.delete(pollVotes).where(inArray(pollVotes.profileId, profileIds));
   await tx.update(teamFundEntries).set({ profileId: null, description: "Indbetaling (slettet medlem)" }).where(inArray(teamFundEntries.profileId, profileIds));
   await tx.update(fines).set({ description: "Slettet" }).where(inArray(fines.profileId, profileIds));
   await tx
