@@ -8,6 +8,7 @@ import { mockProvider } from "../lib/payments";
 import { loadAccessContext } from "../auth/context";
 import {
   addClubMember,
+  addFundEntry,
   addMatchEvent,
   recordResult,
   saveLineup,
@@ -348,4 +349,17 @@ export async function seedVolunteerDemo(db: Db, demo: Awaited<ReturnType<typeof 
   await signContract(db, mette, mc.id, `${demo.users.mette.profile.firstName} ${demo.users.mette.profile.lastName}`);
   const pc = await createContract(db, karen, club, { profileId: peter.profile.id, kind: "coach", title: "Trænerkontrakt Senior herrer", body: "Peter er træner for Senior herrer i sæsonen 2026/27.", startsOn: start, endsOn: end });
   await sendContract(db, karen, pc.id);
+}
+
+/** Holdkasse på U9 i demoklubben: nogle indbetalinger og en udgift. Beløbene er opdigtede og kun til demoen. */
+export async function seedTeamFundDemo(db: Db, demo: Awaited<ReturnType<typeof seedDemo>>, now = new Date()) {
+  const karen = await loadAccessContext(db, demo.users.karen.user.id, now);
+  const mette = await loadAccessContext(db, demo.users.mette.user.id, now);
+  const u9 = demo.teams.u9.id;
+  await setTeamModule(db, karen, u9, "teamfund", true);
+  const today = localDate(now);
+  for (const kid of [demo.kids.emma, demo.kids.ida, demo.kids.noor]) {
+    await addFundEntry(db, mette, u9, { kind: "deposit", amountOre: 5000, description: "Indbetaling til sæsonafslutning", profileId: kid.id, entryDate: addDays(today, -14) });
+  }
+  await addFundEntry(db, mette, u9, { kind: "withdrawal", amountOre: 4200, description: "Frugt og vand til stævnet", entryDate: addDays(today, -3) });
 }

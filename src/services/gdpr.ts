@@ -35,6 +35,7 @@ import {
   profiles,
   savedCards,
   teamMembers,
+  teamFundEntries,
   teamTasks,
   volunteerShifts,
   teams,
@@ -103,7 +104,7 @@ async function exportProfile(db: Db, profileId: string) {
     .select({ firstName: profiles.firstName, lastName: profiles.lastName, birthDate: profiles.birthDate, email: profiles.email, phone: profiles.phone, createdAt: profiles.createdAt })
     .from(profiles)
     .where(eq(profiles.id, profileId));
-  const [memberships, roles, teamRows, responses, myCharges, offers, rides, requests, tasks, myFines, matchLineups, matchEventRows, written, myPosts, myConsents, guardians, myShifts, myContracts, myCertificates] = await Promise.all([
+  const [memberships, roles, teamRows, responses, myCharges, offers, rides, requests, tasks, myFines, matchLineups, matchEventRows, written, myPosts, myConsents, guardians, myShifts, myContracts, myCertificates, myFundDeposits] = await Promise.all([
     db
       .select({ club: clubs.name, status: clubMemberships.status, joinedAt: clubMemberships.joinedAt, leftAt: clubMemberships.leftAt, exempt: clubMemberships.exempt })
       .from(clubMemberships)
@@ -156,6 +157,10 @@ async function exportProfile(db: Db, profileId: string) {
       .select({ status: childCertificates.status, reason: childCertificates.reason, consentAt: childCertificates.consentAt, requestedAt: childCertificates.requestedAt, decidedAt: childCertificates.decidedAt, issuedOn: childCertificates.issuedOn, expiresOn: childCertificates.expiresOn })
       .from(childCertificates)
       .where(eq(childCertificates.profileId, profileId)),
+    db
+      .select({ description: teamFundEntries.description, amountOre: teamFundEntries.amountOre, entryDate: teamFundEntries.entryDate })
+      .from(teamFundEntries)
+      .where(eq(teamFundEntries.profileId, profileId)),
   ]);
   const paymentRows = myCharges.length
     ? await db
@@ -181,6 +186,7 @@ async function exportProfile(db: Db, profileId: string) {
     volunteerShifts: myShifts,
     contracts: myContracts,
     childCertificates: myCertificates,
+    teamFundDeposits: myFundDeposits,
   };
 }
 
@@ -285,6 +291,7 @@ async function anonymize(tx: Tx, profileIds: string[], now: Date) {
   await tx.delete(matchEvents).where(and(inArray(matchEvents.profileId, profileIds), inArray(matchEvents.kind, ["yellow", "red"])));
   await tx.update(matchEvents).set({ profileId: null }).where(inArray(matchEvents.profileId, profileIds));
   await tx.update(matchEvents).set({ assistProfileId: null }).where(inArray(matchEvents.assistProfileId, profileIds));
+  await tx.update(teamFundEntries).set({ profileId: null, description: "Indbetaling (slettet medlem)" }).where(inArray(teamFundEntries.profileId, profileIds));
   await tx.update(fines).set({ description: "Slettet" }).where(inArray(fines.profileId, profileIds));
   await tx
     .update(profiles)
