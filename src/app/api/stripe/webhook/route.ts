@@ -1,7 +1,7 @@
 // Stripe kalder denne adresse, når en betaling er gennemført. Opsæt den i Stripe som
 // Connect-webhook (hændelser fra foreningernes konti) med checkout.session.completed.
 import { NextResponse, type NextRequest } from "next/server";
-import { completeCheckout, completeTicketOrder, markAutoPaid, saveCardFromCheckout, sendTicketMail } from "../../../../services";
+import { completeCheckout, completeTicketOrder, markAutoPaid, refundFailedTicketPayment, saveCardFromCheckout, sendTicketMail, TicketPaymentError } from "../../../../services";
 import { db } from "../../../../lib/db";
 import { sendMail } from "../../../../lib/mail";
 import { origin } from "../../../../lib/origin";
@@ -29,11 +29,17 @@ export async function POST(req: NextRequest) {
   if (done) {
     const s = event.data.object;
     // Billetkøb er uden login og hører ikke til en opkrævning: de har deres egen tabel.
-    const ticket = await completeTicketOrder(db, s.id, { paymentIntentId: s.payment_intent, amountOre: s.amount_total }).catch((e) => {
-      // Fx pladserne er givet videre: Stripe må ikke gentage kaldet; foreningen skal refundere manuelt.
-      console.error("Billetkøb kunne ikke bekræftes", s.id, e);
-      return { orderId: "", accessToken: "", alreadyDone: true };
-    });
+    let ticket;
+    try {
+      ticket = await completeTicketOrder(db, s.id, { paymentIntentId: s.payment_intent, amountOre: s.amount_total });
+    } catch (e) {
+      // Betalingen kan ikke give billetter (fx arrangementet blev aflyst, mens køberen betalte): pengene refunderes automatisk.
+      // Alle andre fejl giver 500, så Stripe prøver igen.
+      if (!(e instanceof TicketPaymentError)) throw e;
+      console.error("Billetkøb refunderes", s.id, e.message);
+      await refundFailedTicketPayment(db, getPaymentProvider(), s.id, { paymentIntentId: s.payment_intent, reason: e.message });
+      return NextResponse.json({ received: true, refunded: true });
+    }
     if (ticket) {
       if (!ticket.alreadyDone) await sendTicketMail(db, ticket.orderId, sendMail, await origin());
       return NextResponse.json({ received: true });

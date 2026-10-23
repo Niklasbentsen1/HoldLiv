@@ -11,6 +11,8 @@ import { eq } from "drizzle-orm";
 import {
   admitTicket,
   cancelTicketEvent,
+  refundFailedTicketPayment,
+  TicketPaymentError,
   checkTicket,
   completeTicketOrder,
   createTicketEvent,
@@ -182,6 +184,55 @@ describe("køb uden login", () => {
     await pay((await buy(e.id, 4, "p1@example.test")).orderToken);
     await expect(updateTicketEvent(db, karen, e.id, input({ name: "Pladser", capacity: 3 }))).rejects.toThrow(/solgt flere/);
     await updateTicketEvent(db, karen, e.id, input({ name: "Pladser", capacity: 4 }));
+  });
+});
+
+describe("betaling der ikke kan give billetter", () => {
+  const sessionOf = async (token: string) => (await db.select().from(ticketOrders).where(eq(ticketOrders.accessToken, token)))[0];
+
+  it("refunderer automatisk, når arrangementet aflyses mens køberen betaler", async () => {
+    const karen = await ctxOf("karen");
+    const e = await createTicketEvent(db, karen, clubId, input({ name: "Aflyst under betaling", capacity: 10 }));
+    const r = await buy(e.id, 2, "race@example.test");
+    const expired: string[] = [];
+    await cancelTicketEvent(db, karen, e.id, { ...mockProvider, expireCheckout: async (ref) => void expired.push(ref) });
+    const o = await sessionOf(r.orderToken);
+    expect(expired).toEqual([o.providerRef]);
+    // Køberen betaler alligevel, og Stripe melder det.
+    await expect(completeTicketOrder(db, o.providerRef!, { paymentIntentId: "pi_1", amountOre: o.amountOre })).rejects.toBeInstanceOf(TicketPaymentError);
+    const refunds: string[] = [];
+    const provider = { ...mockProvider, refund: async (id: string) => void refunds.push(id) };
+    const o2 = { ...(await sessionOf(r.orderToken)), provider: "stripe" as const };
+    await db.update(ticketOrders).set({ provider: "stripe" }).where(eq(ticketOrders.id, o2.id));
+    const res = await refundFailedTicketPayment(db, provider, o.providerRef!, { paymentIntentId: "pi_1", reason: "Bestillingen er annulleret." });
+    expect(res).toEqual({ orderId: o.id, refunded: true });
+    expect(refunds).toEqual(["pi_1"]);
+    const after = await sessionOf(r.orderToken);
+    expect(after.status).toBe("refunded");
+    expect(after.providerPaymentId).toBe("pi_1");
+    expect((await getTicketOrder(db, r.orderToken))!.tickets).toHaveLength(0);
+    // Gentaget kald (Stripe prøver igen) refunderer ikke to gange.
+    expect(await refundFailedTicketPayment(db, provider, o.providerRef!, { paymentIntentId: "pi_1", reason: "x" })).toEqual({ orderId: o.id, refunded: false });
+    expect(refunds).toHaveLength(1);
+  });
+
+  it("lader fejlen stå, hvis selve refusionen fejler, så Stripe prøver igen", async () => {
+    const karen = await ctxOf("karen");
+    const e = await createTicketEvent(db, karen, clubId, input({ name: "Refusion fejler", capacity: 10 }));
+    const r = await buy(e.id, 1, "fejl@example.test");
+    const o = await sessionOf(r.orderToken);
+    await db.update(ticketOrders).set({ provider: "stripe", status: "cancelled" }).where(eq(ticketOrders.id, o.id));
+    const broken = { ...mockProvider, refund: async () => { throw new Error("Stripe er nede"); } };
+    await expect(refundFailedTicketPayment(db, broken, o.providerRef!, { paymentIntentId: "pi_2", reason: "x" })).rejects.toThrow(/Stripe er nede/);
+    expect((await sessionOf(r.orderToken)).status).toBe("cancelled");
+  });
+
+  it("kaster kun forretningsfejl som TicketPaymentError (forkert beløb), og andre sessioner ignoreres", async () => {
+    const e = await createTicketEvent(db, await ctxOf("karen"), clubId, input({ name: "Beløb", capacity: 10 }));
+    const r = await buy(e.id, 1, "beloeb@example.test");
+    const o = await sessionOf(r.orderToken);
+    await expect(completeTicketOrder(db, o.providerRef!, { amountOre: 1 })).rejects.toBeInstanceOf(TicketPaymentError);
+    expect(await refundFailedTicketPayment(db, mockProvider, "ukendt", { reason: "x" })).toBeNull();
   });
 });
 

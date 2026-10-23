@@ -1573,7 +1573,7 @@ export async function editTicketEvent(formData: FormData) {
 
 export async function cancelTicketEventAction(formData: FormData) {
   const { ctx } = await requireSession();
-  await attempt(kasse(formData, "/billetter"), () => cancelTicketEvent(db, ctx, str(formData, "ticketEventId")));
+  await attempt(kasse(formData, "/billetter"), () => cancelTicketEvent(db, ctx, str(formData, "ticketEventId"), paymentProviderOrUndefined()));
   revalidatePath("/kasse/billetter");
   redirect(kasse(formData, "/billetter"));
 }

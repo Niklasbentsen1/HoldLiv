@@ -35,6 +35,14 @@ export const MAX_PENDING_PER_EMAIL = 3;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID = /^[0-9a-f-]{36}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{20,64}$/;
+/** En betaling, der ikke kan give billetter (annulleret, pladser givet videre, forkert beløb). Pengene skal tilbage til køberen. */
+export class TicketPaymentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TicketPaymentError";
+  }
+}
+
 const newToken = () => randomBytes(24).toString("base64url");
 
 export interface TicketEventInput {
@@ -108,18 +116,25 @@ export async function updateTicketEvent(db: Db, ctx: AccessContext, id: string, 
   await logAudit(db, { action: "tickets.event_updated", clubId: existing.clubId, actorUserId: ctx.userId, targetType: "ticket_event", targetId: id });
 }
 
-/** Aflyser: salget lukker og ikke betalte bestillinger annulleres. Betalte bestillinger skal refunderes (se refundTicketOrder). */
-export async function cancelTicketEvent(db: Db, ctx: AccessContext, id: string) {
+/**
+ * Aflyser: salget lukker, ikke betalte bestillinger annulleres og deres åbne betalingssider udløber (best effort).
+ * Betalte bestillinger skal refunderes (se refundTicketOrder). Betaler en køber alligevel, før siden udløber, refunderes det automatisk.
+ */
+export async function cancelTicketEvent(db: Db, ctx: AccessContext, id: string, provider?: PaymentProvider) {
   const e = await loadTicketEvent(db, id);
   assertCan(ctx, { action: "finance.manage", clubId: e.clubId });
   if (e.cancelledAt) throw new Error("Arrangementet er allerede aflyst.");
-  const paid = await db.transaction(async (tx) => {
+  const { paid, sessions } = await db.transaction(async (tx) => {
     await tx.select({ id: ticketEvents.id }).from(ticketEvents).where(eq(ticketEvents.id, id)).for("update");
     await tx.update(ticketEvents).set({ cancelledAt: ctx.now }).where(eq(ticketEvents.id, id));
-    await tx.update(ticketOrders).set({ status: "cancelled" }).where(and(eq(ticketOrders.ticketEventId, id), eq(ticketOrders.status, "pending")));
+    const cancelled = await tx.update(ticketOrders).set({ status: "cancelled" }).where(and(eq(ticketOrders.ticketEventId, id), eq(ticketOrders.status, "pending"))).returning({ ref: ticketOrders.providerRef });
     const [r] = await tx.select({ n: count() }).from(ticketOrders).where(and(eq(ticketOrders.ticketEventId, id), eq(ticketOrders.status, "paid"), sql`${ticketOrders.amountOre} > 0`));
-    return r.n;
+    return { paid: r.n, sessions: cancelled.flatMap((c) => (c.ref ? [c.ref] : [])) };
   });
+  if (provider) {
+    const [club] = await db.select({ account: clubs.stripeAccountId }).from(clubs).where(eq(clubs.id, e.clubId));
+    for (const ref of sessions) await provider.expireCheckout(ref, club.account).catch((err) => console.error("Betalingssiden kunne ikke udløbe", ref, err));
+  }
   await logAudit(db, { action: "tickets.event_cancelled", clubId: e.clubId, actorUserId: ctx.userId, targetType: "ticket_event", targetId: id, detail: { paidToRefund: paid } });
   return { paidToRefund: paid };
 }
@@ -307,16 +322,44 @@ export async function completeTicketOrder(db: Db, sessionId: string, opts: { pay
     const [e] = await tx.select().from(ticketEvents).where(eq(ticketEvents.id, peek.eventId)).for("update");
     const [order] = await tx.select().from(ticketOrders).where(eq(ticketOrders.id, peek.id)).for("update");
     if (order.status === "paid" || order.status === "refunded") return { orderId: order.id, accessToken: order.accessToken, alreadyDone: true };
-    if (opts.amountOre != null && opts.amountOre !== order.amountOre) throw new Error("Det betalte beløb passer ikke med bestillingen");
-    if (order.status === "cancelled") throw new Error("Bestillingen er annulleret. Kontakt foreningen for at få pengene tilbage.");
+    if (opts.amountOre != null && opts.amountOre !== order.amountOre) throw new TicketPaymentError("Det betalte beløb passer ikke med bestillingen");
+    if (order.status === "cancelled") throw new TicketPaymentError("Bestillingen er annulleret.");
     // Holdet er udløbet: er pladserne givet videre, kan billetterne ikke udstedes.
     if (order.expiresAt && order.expiresAt <= now && e.capacity !== null) {
       const taken = await takenSeats(tx, e.id, now);
-      if (taken + order.quantity > e.capacity) throw new Error("Pladserne er givet videre. Kontakt foreningen for at få pengene tilbage.");
+      if (taken + order.quantity > e.capacity) throw new TicketPaymentError("Pladserne er givet videre.");
     }
     await tx.update(ticketOrders).set({ status: "paid", paidAt: now, expiresAt: null, providerPaymentId: opts.paymentIntentId ?? null }).where(eq(ticketOrders.id, order.id));
     await issueTickets(tx, order);
     return { orderId: order.id, accessToken: order.accessToken, alreadyDone: false };
+  });
+}
+
+/**
+ * En betaling, der ikke kunne give billetter (se TicketPaymentError), refunderes automatisk: betalingen gemmes på bestillingen,
+ * pengene sendes tilbage, og bestillingen markeres refunderet. Kan kaldes flere gange. Fejler selve refusionen, kastes fejlen,
+ * så webhooken svarer 500 og Stripe prøver igen.
+ */
+export async function refundFailedTicketPayment(
+  db: Db,
+  provider: PaymentProvider,
+  sessionId: string,
+  opts: { paymentIntentId?: string | null; reason: string; now?: Date },
+) {
+  const now = opts.now ?? new Date();
+  return db.transaction(async (tx) => {
+    const [peek] = await tx.select({ id: ticketOrders.id }).from(ticketOrders).where(eq(ticketOrders.providerRef, sessionId));
+    if (!peek) return null;
+    const [order] = await tx.select().from(ticketOrders).where(eq(ticketOrders.id, peek.id)).for("update");
+    if (order.status === "refunded" || order.status === "paid") return { orderId: order.id, refunded: false };
+    const paymentId = opts.paymentIntentId ?? order.providerPaymentId;
+    if (order.provider === "stripe" && paymentId) {
+      const [club] = await tx.select({ account: clubs.stripeAccountId }).from(clubs).where(eq(clubs.id, order.clubId));
+      await provider.refund(paymentId, club.account);
+    }
+    await tx.update(ticketOrders).set({ status: "refunded", refundedAt: now, expiresAt: null, providerPaymentId: paymentId ?? null }).where(eq(ticketOrders.id, order.id));
+    await logAudit(tx, { action: "tickets.payment_auto_refunded", clubId: order.clubId, targetType: "ticket_order", targetId: order.id, detail: { reason: opts.reason, amountOre: order.amountOre } });
+    return { orderId: order.id, refunded: true };
   });
 }
 
@@ -425,20 +468,23 @@ export async function listTicketOrders(db: Db, ctx: AccessContext, ticketEventId
 
 /** Refunderer en betalt bestilling. Billetterne bliver ugyldige, og pladserne frigives. */
 export async function refundTicketOrder(db: Db, ctx: AccessContext, orderId: string, provider: PaymentProvider) {
-  const [order] = await db.select().from(ticketOrders).where(eq(ticketOrders.id, orderId));
-  if (!order) throw new Error("Bestillingen findes ikke.");
-  assertCan(ctx, { action: "finance.manage", clubId: order.clubId });
-  if (order.status !== "paid") throw new Error("Kun betalte bestillinger kan refunderes.");
-  if (order.amountOre > 0 && order.providerPaymentId && order.provider === "stripe") {
-    const [club] = await db.select({ account: clubs.stripeAccountId }).from(clubs).where(eq(clubs.id, order.clubId));
-    await provider.refund(order.providerPaymentId, club.account);
-  }
-  await db.transaction(async (tx) => {
-    const done = await tx.update(ticketOrders).set({ status: "refunded", refundedAt: ctx.now }).where(and(eq(ticketOrders.id, orderId), eq(ticketOrders.status, "paid"))).returning({ id: ticketOrders.id });
-    if (done.length === 0) return;
+  if (!UUID.test(orderId)) throw new Error("Bestillingen findes ikke.");
+  const [peek] = await db.select({ clubId: ticketOrders.clubId }).from(ticketOrders).where(eq(ticketOrders.id, orderId));
+  if (!peek) throw new Error("Bestillingen findes ikke.");
+  assertCan(ctx, { action: "finance.manage", clubId: peek.clubId });
+  const amountOre = await db.transaction(async (tx) => {
+    // Rækken låses, så to samtidige klik ikke refunderer to gange. Fejler refusionen, rulles alt tilbage.
+    const [order] = await tx.select().from(ticketOrders).where(eq(ticketOrders.id, orderId)).for("update");
+    if (order.status !== "paid") throw new Error("Kun betalte bestillinger kan refunderes.");
+    await tx.update(ticketOrders).set({ status: "refunded", refundedAt: ctx.now }).where(eq(ticketOrders.id, orderId));
     await tx.update(tickets).set({ voidedAt: ctx.now }).where(and(eq(tickets.orderId, orderId), isNull(tickets.voidedAt)));
+    if (order.amountOre > 0 && order.providerPaymentId && order.provider === "stripe") {
+      const [club] = await tx.select({ account: clubs.stripeAccountId }).from(clubs).where(eq(clubs.id, order.clubId));
+      await provider.refund(order.providerPaymentId, club.account);
+    }
+    return order.amountOre;
   });
-  await logAudit(db, { action: "tickets.order_refunded", clubId: order.clubId, actorUserId: ctx.userId, targetType: "ticket_order", targetId: orderId, detail: { amountOre: order.amountOre } });
+  await logAudit(db, { action: "tickets.order_refunded", clubId: peek.clubId, actorUserId: ctx.userId, targetType: "ticket_order", targetId: orderId, detail: { amountOre } });
 }
 
 // --- Scanning ---
@@ -448,6 +494,8 @@ export type TicketCheck =
   | { found: true; status: "valid" | "used" | "void" | "cancelled"; event: string; startsAt: Date; clubName: string; number: number; of: number; usedAt: Date | null };
 
 async function loadScannable(db: Db, ctx: AccessContext, code: string) {
+  // Rollen tjekkes før koden slås op, så andre ikke kan bruge siden til at afprøve koder.
+  if (ctx.adminClubs.size === 0 && ctx.treasurerClubs.size === 0 && ctx.coachTeams.size === 0) throw new ForbiddenError("club.view");
   if (!TOKEN.test(code)) return null;
   const [t] = await db.select().from(tickets).where(eq(tickets.code, code));
   if (!t) return null;
