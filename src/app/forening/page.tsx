@@ -14,7 +14,7 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
   const clubs = await Promise.all(
     (await listAdminClubs(db, ctx)).map(async (c) => ({ ...c, treasurers: await listTreasurers(db, ctx, c.id), matrix: await moduleMatrix(db, ctx, c.id) })),
   );
-  if (clubs.length === 0) return <Shell ctx={ctx}>Kun foreningens administratorer har adgang her.</Shell>;
+  if (clubs.length === 0) return <Shell ctx={ctx}><p>Kun foreningens administratorer har adgang her.</p><p><Link href="/opret-forening">Opret en ny forening</Link></p></Shell>;
 
   return (
     <Shell active="/forening" ctx={ctx}>
@@ -23,6 +23,7 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
         <section key={c.id}>
           <PageHead kicker={<><Crest name={c.name} size={22} /> Forening</>} title={c.name} sub={`${c.teams.length} hold`} />
           <p className="row" style={{ gap: 16 }}>
+            <Link href={`/forening/kom-i-gang?klub=${c.id}`} className="muted small">Kom i gang</Link>
             <Link href={`/forening/forslag?klub=${c.id}`} className="muted small">Holdforslag</Link>
             <Link href={`/forening/import?klub=${c.id}`} className="muted small">Importér medlemmer</Link>
             <Link href={`/forening/tilmeldinger?klub=${c.id}`} className="muted small">Indmeldelse</Link>

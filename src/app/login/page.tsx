@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { profiles, users } from "../../db/schema";
 import { db } from "../../lib/db";
@@ -37,6 +38,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <button className="primary">Send kode</button>
         </form>
         <p className="muted small">Første gang du logger ind, opretter vi dig. Børn har ikke eget login; dem styrer du som forælder.</p>
+        <p className="muted small">Skal jeres forening på HoldLiv? <Link href="/login?next=/opret-forening">Opret den her</Link>.</p>
       </section>
 
       {demo.length > 0 && (
