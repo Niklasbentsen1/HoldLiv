@@ -117,6 +117,10 @@ import {
   setTeamDefaultFee,
   saveModuleMatrix as saveModules,
   addFundEntry,
+  deleteDocument,
+  replaceDocumentFile,
+  updateDocumentInfo,
+  uploadDocument,
   closePoll,
   createPoll,
   deletePoll,
@@ -765,6 +769,46 @@ export const votePollAction = async (f: FormData) =>
 export const withdrawVoteAction = async (f: FormData) => pollAction(f, (ctx) => withdrawVote(db, ctx, str(f, "pollId"), str(f, "profileId")));
 export const closePollAction = async (f: FormData) => pollAction(f, (ctx) => closePoll(db, ctx, str(f, "pollId")));
 export const deletePollAction = async (f: FormData) => pollAction(f, (ctx) => deletePoll(db, ctx, str(f, "pollId")));
+
+// --- Dokumentarkiv ---
+
+async function fileOf(f: FormData, name: string) {
+  const file = f.get(name);
+  return file instanceof File && file.size > 0 ? { fileName: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } : null;
+}
+
+async function archiveAction(fn: (ctx: Awaited<ReturnType<typeof requireSession>>["ctx"]) => Promise<unknown>) {
+  const { ctx } = await requireSession();
+  await attempt("/arkiv", () => fn(ctx));
+  revalidatePath("/arkiv");
+  redirect("/arkiv");
+}
+
+export const uploadDocumentAction = async (f: FormData) =>
+  archiveAction(async (ctx) => {
+    const file = await fileOf(f, "file");
+    if (!file) throw new Error("Vælg en fil.");
+    // Målgruppen står som "club:<id>", "board:<id>" eller "team:<klub>:<hold>".
+    const [audience, a, b] = str(f, "target").split(":");
+    if (audience !== "club" && audience !== "board" && audience !== "team") throw new Error("Vælg, hvem dokumentet er til.");
+    return uploadDocument(db, ctx, a, {
+      audience,
+      teamId: audience === "team" ? b : null,
+      title: str(f, "title"),
+      description: opt(f, "description"),
+      category: opt(f, "category"),
+      ...file,
+    });
+  });
+export const replaceDocumentAction = async (f: FormData) =>
+  archiveAction(async (ctx) => {
+    const file = await fileOf(f, "file");
+    if (!file) throw new Error("Vælg en fil.");
+    return replaceDocumentFile(db, ctx, str(f, "documentId"), file);
+  });
+export const updateDocumentAction = async (f: FormData) =>
+  archiveAction((ctx) => updateDocumentInfo(db, ctx, str(f, "documentId"), { title: str(f, "title"), description: opt(f, "description"), category: opt(f, "category") }));
+export const deleteDocumentAction = async (f: FormData) => archiveAction((ctx) => deleteDocument(db, ctx, str(f, "documentId")));
 
 // --- Kampe: opstilling, resultat, referat ---
 

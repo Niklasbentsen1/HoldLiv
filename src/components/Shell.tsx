@@ -21,6 +21,7 @@ export const NAV: NavItem[] = [
   { href: "/familie", label: "Familie", icon: "family" },
   { href: "/nyheder", label: "Nyheder", icon: "star" },
   { href: "/betaling", label: "Betaling", icon: "card" },
+  { href: "/arkiv", label: "Arkiv", icon: "star" },
   { href: "/vagtplan", label: "Vagter", icon: "clock" },
   { href: "/udlaeg", label: "Udlæg", icon: "coins", show: (ctx) => ctx.coachTeams.size > 0 || ctx.adminClubs.size > 0 || ctx.treasurerClubs.size > 0 },
   { href: "/hjaelp", label: "Hjælp", icon: "star" },
