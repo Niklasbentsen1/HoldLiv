@@ -31,5 +31,7 @@ describe("konkurrentdata", () => {
     expect(new Set(COMPARISON.map((r) => r.area)).size).toBe(COMPARISON.length);
     expect(COMPARISON.some((r) => r.holdliv === "nej")).toBe(true);
     expect(COMPARISON.some((r) => r.holdliv === "ja")).toBe(true);
+    const behind = COMPARISON.filter((r) => r.holdliv !== "ja" && (r.klubmodul === "ja" || r.holdsport === "ja")).map((r) => r.area);
+    expect(behind).toEqual(expect.arrayContaining(["App i App Store og Google Play", "MobilePay-abonnement til kontingent"]));
   });
 });

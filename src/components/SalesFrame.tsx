@@ -5,9 +5,9 @@ import type { ReactNode } from "react";
 export function SalesFrame({ children }: { children: ReactNode }) {
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 16px 64px" }}>
-      <header className="row" style={{ gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 32 }}>
+      <header className="sales-head">
         <Link href="/for-foreninger" className="logo" aria-label="HoldLiv"><span className="logo-word">HoldLiv</span></Link>
-        <nav className="row grow" style={{ gap: 16, flexWrap: "wrap" }} aria-label="Hovedmenu">
+        <nav className="sales-nav" aria-label="Hovedmenu">
           <Link href="/for-foreninger" className="muted">Forside</Link>
           <Link href="/priser" className="muted">Pris og sammenligning</Link>
           <Link href="/hjaelpecenter" className="muted">Hjælp</Link>

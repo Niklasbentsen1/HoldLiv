@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const POINTS: [string, string][] = [
   ["Både holdet og kassereren", "Trænere får kalender, svar, chat, samkørsel og kampe. Kassereren får kontingent, rykkere, udlæg og medlemstal. I samme system."],
   ["Slå kun til, hvad hvert hold skal bruge", "U9 kan have samkørsel og frugtliste, U15 trænerudlæg og seniorerne bødekasse. Moduler slås til pr. hold."],
-  ["Alt er med", "Hjemmeside, billetsalg, vagtplan, kontrakter, børneattester og booking er en del af systemet og ikke tilkøb."],
+  ["Meget er bygget ind", "Hjemmeside, billetsalg, vagtplan, kontrakter, børneattester og booking er bygget ind i systemet."],
   ["Gratis flytning", "Importér medlemmerne fra Klubmodul, Holdsport eller Excel. Du ser resultatet, før noget gemmes."],
   ["Foreningen bestemmer priserne", "Kontingent, camps, billetter og leje sætter foreningen selv. Pengene går direkte til foreningens egen Stripe-konto."],
   ["Tryg for børn og forældre", "Børn har ikke eget login, forældre styrer familien, og hjemmesiden viser aldrig medlemmer."],
@@ -20,8 +20,8 @@ export default async function Landing() {
     <SalesFrame>
       <section className="stack" style={{ padding: "24px 0" }}>
         <h1>Hele foreningen i ét system</h1>
-        <p style={{ fontSize: "1.2em", maxWidth: 640 }}>Kalender og hold til trænerne, kontingent og indmeldelse til kassereren, og en hjemmeside til alle. Ingen startpakke og ingen tilkøb.</p>
-        <p className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+        <p style={{ fontSize: "1.2em", maxWidth: 640 }}>Kalender og hold til trænerne, kontingent og indmeldelse til kassereren, og en hjemmeside til alle.</p>
+        <p className="sales-actions">
           <Link href="/login?next=/opret-forening" className="primary">Opret jeres forening</Link>
           <Link href="/priser">Se pris og sammenligning</Link>
         </p>
