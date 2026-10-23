@@ -253,6 +253,13 @@
       "when": 1792752542862,
       "tag": "0035_afstemninger_kort",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792753567376,
+      "tag": "0036_hjemmeside",
+      "breakpoints": true
     }
   ]
 }

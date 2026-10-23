@@ -190,6 +190,12 @@ export const clubs = pgTable("clubs", {
   mileageRateOrePerKm: integer("mileage_rate_ore_per_km"),
   // Foreningen tillader AI-medlemsservice (svar til medlemmer ud fra deres egne oplysninger). Slået fra som standard.
   aiServiceEnabled: boolean("ai_service_enabled").notNull().default(false),
+  // Foreningens offentlige hjemmeside (/klub/<slug>). Slået fra som standard; admin vælger selv, hvad der vises.
+  siteEnabled: boolean("site_enabled").notNull().default(false),
+  siteIntro: text("site_intro"),
+  siteContact: text("site_contact"),
+  siteShowTeams: boolean("site_show_teams").notNull().default(true),
+  siteShowCalendar: boolean("site_show_calendar").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -829,6 +835,8 @@ export const posts = pgTable(
     title: text("title").notNull(),
     body: text("body").notNull(),
     pinned: boolean("pinned").notNull().default(false),
+    // Foreningens nyhed er også vist på den offentlige hjemmeside. Kun ledelsen kan sætte den.
+    publicOnSite: boolean("public_on_site").notNull().default(false),
     authorUserId: uuid("author_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

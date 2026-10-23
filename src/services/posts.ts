@@ -78,6 +78,8 @@ export interface NewPost {
   title: string;
   body: string;
   pinned?: boolean;
+  /** Kun nyheder for hele foreningen: vis også på den offentlige hjemmeside. */
+  publicOnSite?: boolean;
   /** Kun opslag: antal dage før det forsvinder. */
   expiresInDays?: number | null;
 }
@@ -103,6 +105,7 @@ export async function createPost(db: Db, ctx: AccessContext, deliver: Deliver, i
   if (!scope.lead && (await isMinorUser(db, ctx))) throw new Error("Kun voksne kan skrive opslag og nyheder.");
   if (input.kind === "news" && !scope.lead) throw new Error("Kun ledelsen kan skrive nyheder.");
   if (input.pinned && !scope.lead) throw new Error("Kun ledelsen kan fastgøre opslag.");
+  if (input.publicOnSite && (input.kind !== "news" || scope.teamId || !scope.lead)) throw new Error("Kun foreningens egne nyheder kan vises på hjemmesiden.");
 
   let expiresAt: Date | null = null;
   if (input.kind === "board") {
@@ -112,7 +115,7 @@ export async function createPost(db: Db, ctx: AccessContext, deliver: Deliver, i
   }
   const [post] = await db
     .insert(posts)
-    .values({ clubId: scope.clubId, teamId: scope.teamId, kind: input.kind, title, body, pinned: !!input.pinned, authorUserId: ctx.userId, authorProfileId: ctx.profileId, expiresAt })
+    .values({ clubId: scope.clubId, teamId: scope.teamId, kind: input.kind, title, body, pinned: !!input.pinned, publicOnSite: !!input.publicOnSite, authorUserId: ctx.userId, authorProfileId: ctx.profileId, expiresAt })
     .returning();
 
   if (input.kind === "news") {
@@ -139,9 +142,11 @@ export interface FeedPost {
   title: string;
   body: string;
   pinned: boolean;
+  publicOnSite: boolean;
   createdAt: Date;
   expiresAt: Date | null;
   scopeLabel: string;
+  scopeKey: string;
   authorName: string;
   mine: boolean;
   canManage: boolean;
@@ -173,9 +178,11 @@ export async function listFeed(db: Db, ctx: AccessContext, kind: PostKind, limit
       title: p.title,
       body: p.body,
       pinned: p.pinned,
+      publicOnSite: p.publicOnSite,
       createdAt: p.createdAt,
       expiresAt: p.expiresAt,
       scopeLabel: scope?.label ?? "",
+      scopeKey: p.teamId ? `team:${p.teamId}` : `club:${p.clubId}`,
       authorName: `${firstName} ${lastName}`,
       mine: p.authorUserId === ctx.userId,
       canManage: !!scope?.lead,
