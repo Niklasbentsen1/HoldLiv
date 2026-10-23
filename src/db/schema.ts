@@ -1358,3 +1358,23 @@ export const infoScreens = pgTable(
   },
   (t) => [index("info_screens_club_idx").on(t.clubId)],
 );
+
+// --- Medlemskort ---
+
+// Medlemskortets hemmelige kode. QR-koden på kortet peger på /tjek/<token>, hvor en træner, kassereren eller admin
+// ser, om medlemskabet er gyldigt. Koden kan nulstilles (fx ved mistet telefon). Den indeholder ingen personoplysninger.
+export const memberCards = pgTable(
+  "member_cards",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("member_cards_unique").on(t.clubId, t.profileId)],
+);

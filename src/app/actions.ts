@@ -117,6 +117,7 @@ import {
   setTeamDefaultFee,
   saveModuleMatrix as saveModules,
   addFundEntry,
+  resetCard,
   createScreen,
   deleteScreen,
   resetScreenToken,
@@ -834,6 +835,15 @@ export const createScreenAction = async (f: FormData) => screenAction(f, (ctx) =
 export const updateScreenAction = async (f: FormData) => screenAction(f, (ctx) => updateScreen(db, ctx, str(f, "screenId"), screenInput(f)));
 export const resetScreenTokenAction = async (f: FormData) => screenAction(f, (ctx) => resetScreenToken(db, ctx, str(f, "screenId")));
 export const deleteScreenAction = async (f: FormData) => screenAction(f, (ctx) => deleteScreen(db, ctx, str(f, "screenId")));
+
+// --- Medlemskort ---
+
+export async function resetCardAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/medlemskort", () => resetCard(db, ctx, str(formData, "clubId"), str(formData, "profileId")));
+  revalidatePath("/medlemskort");
+  redirect("/medlemskort");
+}
 
 // --- Kampe: opstilling, resultat, referat ---
 
