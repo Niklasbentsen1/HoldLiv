@@ -246,9 +246,28 @@ describe("statistik", () => {
     expect(own.players.map((p) => p.name.split(" ")[0])).toEqual(["Lukas"]);
     expect(own.record.played).toBe(2);
     await updateModuleConfig(db, await ctxOf("jonas"), u11, "matches", { startersCount: "3", showRankings: "on" });
-    expect((await getTeamStats(db, sofie, u11)).players).toHaveLength(4);
+    const ranked = (await getTeamStats(db, sofie, u11)).players;
+    expect(ranked).toHaveLength(4);
+    // Kort ses ikke af andre familier, selv med rangliste. Kasper har rødt og William gult.
+    expect(ranked.every((p) => p.yellow === 0 && p.red === 0)).toBe(true);
+    const mette = (await getTeamStats(db, await ctxOf("mette"), u11)).players.find((p) => p.name.startsWith("William"));
+    expect(mette?.yellow).toBe(1);
+    expect((await getTeamStats(db, await ctxOf("jonas"), u11)).players.find((p) => p.name.startsWith("Kasper"))?.red).toBe(1);
     await updateModuleConfig(db, await ctxOf("jonas"), u11, "matches", { startersCount: "3" });
     expect((await getTeamStats(db, sofie, u11)).players).toHaveLength(1);
+  });
+
+  it("tæller ikke en aflyst kamp eller en kamp, der er rettet til noget andet", async () => {
+    const jonas = await ctxOf("jonas");
+    await sql`update events set cancelled_at = now() where id = ${match2}`;
+    let stats = await getTeamStats(db, jonas, u11);
+    expect(stats.record).toMatchObject({ played: 1, wins: 1, losses: 0, goalsFor: 3, goalsAgainst: 1 });
+    expect(stats.players.find((p) => p.name.startsWith("Kasper"))?.red).toBe(0);
+    await sql`update events set cancelled_at = null, type = 'training' where id = ${match2}`;
+    stats = await getTeamStats(db, jonas, u11);
+    expect(stats.record.played).toBe(1);
+    await sql`update events set type = 'match' where id = ${match2}`;
+    expect((await getTeamStats(db, jonas, u11)).record.played).toBe(2);
   });
 
   it("kampoversigten viser kommende og spillede kampe", async () => {

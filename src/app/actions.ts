@@ -709,7 +709,7 @@ export const recordResultAction = async (f: FormData) =>
       const m = str(f, `min_${profileId}`);
       minutes[profileId] = m === "" ? null : Number(m);
     }
-    return recordResult(db, ctx, str(f, "eventId"), { goalsFor: Number(str(f, "goalsFor")), goalsAgainst: Number(str(f, "goalsAgainst")), minutes });
+    return recordResult(db, ctx, str(f, "eventId"), { goalsFor: str(f, "goalsFor") === "" ? NaN : Number(str(f, "goalsFor")), goalsAgainst: str(f, "goalsAgainst") === "" ? NaN : Number(str(f, "goalsAgainst")), minutes });
   });
 export const clearResultAction = async (f: FormData) => matchAction(f, (ctx) => clearResult(db, ctx, str(f, "eventId")));
 export const addMatchEventAction = async (f: FormData) =>

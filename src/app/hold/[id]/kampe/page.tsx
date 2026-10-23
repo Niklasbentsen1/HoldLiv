@@ -101,11 +101,11 @@ export default async function Matches({ params, searchParams }: { params: Promis
                   <span className="grow">
                     <span className="name">{p.name}</span>
                     <span className="note">
-                      {p.matches} kampe · {p.starts} starter{p.minutes ? ` · ${p.minutes} min.` : ""}
+                      {p.matches} {p.matches === 1 ? "kamp" : "kampe"} · {p.starts} {p.starts === 1 ? "start" : "starter"}{p.minutes ? ` · ${p.minutes} min.` : ""}
                     </span>
                     <span className="note">
-                      {p.goals} mål · {p.assists} assists{p.yellow ? ` · ${p.yellow} gule` : ""}
-                      {p.red ? ` · ${p.red} røde` : ""}
+                      {p.goals} mål · {p.assists} {p.assists === 1 ? "assist" : "assists"}{p.yellow ? ` · ${p.yellow} ${p.yellow === 1 ? "gult" : "gule"}` : ""}
+                      {p.red ? ` · ${p.red} ${p.red === 1 ? "rødt" : "røde"}` : ""}
                     </span>
                   </span>
                 </li>

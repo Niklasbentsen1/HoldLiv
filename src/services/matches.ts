@@ -9,7 +9,7 @@
 //   - Statistik tæller kun spillede kampe (hvor resultatet er indtastet). Alle ser holdets sæson. En spiller eller en forælder
 //     ser egne tal; hele holdets tal pr. spiller ser kun trænerne, med mindre holdet har slået rangliste til.
 //   - Spillere og børn skal være på holdet som spillere. En kamp er en aktivitet af typen kamp, som ikke er aflyst.
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { events, eventResponses, matchEvents, matchPlayers, matchSheets, profiles, teamMembers } from "../db/schema";
 import { can, canActAs, type AccessContext } from "../auth/permissions";
@@ -398,7 +398,7 @@ export async function getTeamStats(db: Db, ctx: AccessContext, teamId: string) {
     .select({ sheet: matchSheets, title: events.title, startsAt: events.startsAt })
     .from(matchSheets)
     .innerJoin(events, eq(events.id, matchSheets.eventId))
-    .where(and(eq(matchSheets.teamId, teamId), isNotNull(matchSheets.playedAt)))
+    .where(and(eq(matchSheets.teamId, teamId), isNotNull(matchSheets.playedAt), eq(events.type, "match"), isNull(events.cancelledAt)))
     .orderBy(asc(events.startsAt));
   const live = sheets;
   const eventIds = live.map((s) => s.sheet.eventId);
@@ -424,6 +424,7 @@ export async function getTeamStats(db: Db, ctx: AccessContext, teamId: string) {
     return { eventId: s.sheet.eventId, title: s.title, startsAt: s.startsAt, opponent: s.sheet.opponent, goalsFor: gf, goalsAgainst: ga, outcome: gf > ga ? ("win" as const) : gf === ga ? ("draw" as const) : ("loss" as const) };
   });
 
+  const cardsVisible = (profileId: string) => lead || canActAs(ctx, profileId);
   const players: PlayerStats[] = roster.map((p) => {
     const mine = lineups.filter((l) => l.profileId === p.id);
     const played = mine.filter((l) => l.slot === "start" || (l.minutes ?? 0) > 0);
@@ -435,8 +436,9 @@ export async function getTeamStats(db: Db, ctx: AccessContext, teamId: string) {
       minutes: mine.reduce((a, l) => a + (l.minutes ?? 0), 0),
       goals: evs.filter((e) => e.kind === "goal" && e.profileId === p.id).length,
       assists: evs.filter((e) => e.kind === "goal" && e.assistProfileId === p.id).length,
-      yellow: evs.filter((e) => e.kind === "yellow" && e.profileId === p.id).length,
-      red: evs.filter((e) => e.kind === "red" && e.profileId === p.id).length,
+      // Kort ser kun trænerne og spillerens egen familie, også når ranglisten er slået til.
+      yellow: cardsVisible(p.id) ? evs.filter((e) => e.kind === "yellow" && e.profileId === p.id).length : 0,
+      red: cardsVisible(p.id) ? evs.filter((e) => e.kind === "red" && e.profileId === p.id).length : 0,
     };
   });
   const everyone = lead || config.showRankings === true;
