@@ -14,6 +14,7 @@ import { clubs, events, posts, teams } from "../db/schema";
 import { assertCan, type AccessContext } from "../auth/permissions";
 import { localDate } from "../lib/money";
 import { logAudit } from "./audit";
+import { listOpenTicketEvents } from "./billetter";
 
 export const MAX_SITE_INTRO = 2000;
 export const MAX_SITE_CONTACT = 500;
@@ -57,6 +58,8 @@ export interface PublicSite {
   contact: string | null;
   signupOpen: boolean;
   news: { id: string; title: string; body: string; createdAt: Date }[];
+  /** Arrangementer med åbent billetsalg. */
+  tickets: Awaited<ReturnType<typeof listOpenTicketEvents>>;
   teams: { id: string; name: string; season: string | null }[] | null;
   days: { date: string; events: { id: string; title: string; type: string; team: string; location: string | null; startsAt: Date; endsAt: Date | null; cancelled: boolean }[] }[] | null;
 }
@@ -102,5 +105,5 @@ export async function getPublicSite(db: Db, slug: string, now = new Date()): Pro
     days = [...byDay.values()];
   }
 
-  return { clubName: club.name, slug: club.slug, intro: club.siteIntro, contact: club.siteContact, signupOpen: club.signupEnabled, news, teams: teamList, days };
+  return { clubName: club.name, slug: club.slug, intro: club.siteIntro, contact: club.siteContact, signupOpen: club.signupEnabled, news, tickets: await listOpenTicketEvents(db, club.id, now), teams: teamList, days };
 }

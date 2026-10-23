@@ -16,6 +16,13 @@ export interface CheckoutRequest {
   baseUrl: string;
   /** Betaleren har sagt ja til, at kortet gemmes og bruges til senere opkrævninger. */
   saveCard?: boolean;
+  /** Billetsalg: betaleren har ikke login, så betalingen vender tilbage til en anden side end kontingentets. */
+  successUrl?: string;
+  cancelUrl?: string;
+  /** Sti til testbetalingen, når Stripe ikke er sat op. Standard: /betal/test. */
+  mockPath?: string;
+  /** Sessionen udløber her (Stripe kræver 30 minutter til 24 timer). Uden: Stripes standard. */
+  expiresAt?: Date;
 }
 
 export interface SavedCardRef {
@@ -51,7 +58,7 @@ export const mockProvider: PaymentProvider = {
   name: "mock",
   async createCheckout(req) {
     const sessionId = `test_${randomBytes(12).toString("base64url")}`;
-    return { sessionId, url: `${req.baseUrl}/betal/test/${sessionId}` };
+    return { sessionId, url: `${req.baseUrl}${req.mockPath ?? "/betal/test"}/${sessionId}` };
   },
   async refund() {},
   async retrieveSavedCard() {
@@ -128,9 +135,10 @@ export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): Pay
           metadata: { charge_id: req.chargeId },
           payment_intent_data: { metadata: { charge_id: req.chargeId }, ...(req.saveCard ? { setup_future_usage: "off_session" } : {}) },
           ...(req.saveCard ? { customer_creation: "always" } : {}),
-          success_url: `${req.baseUrl}${successPath}?session={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${req.baseUrl}${cancelPath}`,
+          success_url: req.successUrl ?? `${req.baseUrl}${successPath}?session={CHECKOUT_SESSION_ID}`,
+          cancel_url: req.cancelUrl ?? `${req.baseUrl}${cancelPath}`,
           locale: "da",
+          expires_at: req.expiresAt ? Math.floor(req.expiresAt.getTime() / 1000) : undefined,
         },
         req.connectedAccountId,
       );

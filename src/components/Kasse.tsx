@@ -13,6 +13,7 @@ const TABS = [
   { path: "/opkraevninger", label: "Opkrævninger" },
   { path: "/udlaeg", label: "Udlæg" },
   { path: "/camps", label: "Camps" },
+  { path: "/billetter", label: "Billetter" },
   { path: "/booking", label: "Booking" },
   { path: "/medlemstal", label: "Medlemstal" },
 ];
