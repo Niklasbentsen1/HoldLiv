@@ -1,15 +1,15 @@
 // Selvbetjent oprettelse af en ny forening og guiden "Kom i gang". Den der opretter, bliver foreningens første admin.
 // HoldLiv tager ikke betaling her; abonnement og pris er ikke besluttet.
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { clubMemberships, clubRoles, clubs, teams } from "../db/schema";
+import { auditLog, clubMemberships, clubRoles, clubs, teams } from "../db/schema";
 import type { AccessContext } from "../auth/permissions";
-import { logAudit } from "./audit";
 import { createClub } from "./index";
 
 export const MAX_CLUB_NAME = 80;
-/** Mod misbrug: én person kan højst oprette så mange foreninger selv. */
+/** Mod misbrug: én person kan højst oprette så mange foreninger selv i alt, og færre pr. døgn. Tælles i revisionsloggen, så det ikke kan omgås ved at give admin videre. */
 export const MAX_CLUBS_PER_CREATOR = 3;
+export const MAX_CLUBS_PER_DAY = 2;
 const RESERVED_SLUGS = new Set(["admin", "api", "app", "hjaelp", "holdliv", "login", "www", "support", "demo", "test"]);
 
 /** "Skovby Idrætsforening!" -> "skovby-idraetsforening" */
@@ -47,17 +47,26 @@ export async function registerClub(db: Db, ctx: AccessContext, input: { name: st
   const slug = (input.slug?.trim() || slugify(name)).toLowerCase();
   const bad = checkSlug(slug);
   if (bad) throw new Error(bad);
-  if (ctx.adminClubs.size >= MAX_CLUBS_PER_CREATOR) throw new Error(`Du kan højst oprette ${MAX_CLUBS_PER_CREATOR} foreninger selv. Skriv til os, hvis du har brug for flere.`);
-  if (!(await isSlugFree(db, slug))) throw new Error("Den adresse er optaget. Vælg en anden.");
   let club;
   try {
-    club = await createClub(db, ctx, name, slug);
+    club = await db.transaction(async (tx) => {
+      // Samtidige oprettelser fra samme login står i kø, så grænsen holder.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"registerClub:" + ctx.userId}))`);
+      const mine = and(eq(auditLog.action, "club.registered"), eq(auditLog.actorUserId, ctx.userId));
+      const [{ n: total }] = await tx.select({ n: count() }).from(auditLog).where(mine);
+      if (total >= MAX_CLUBS_PER_CREATOR) throw new Error(`Du kan højst oprette ${MAX_CLUBS_PER_CREATOR} foreninger selv. Skriv til os, hvis du har brug for flere.`);
+      const [{ n: today }] = await tx.select({ n: count() }).from(auditLog).where(and(mine, gte(auditLog.at, new Date(Date.now() - 24 * 3600 * 1000))));
+      if (today >= MAX_CLUBS_PER_DAY) throw new Error(`Du kan højst oprette ${MAX_CLUBS_PER_DAY} foreninger i døgnet. Prøv igen i morgen.`);
+      if (!(await isSlugFree(tx, slug))) throw new Error("Den adresse er optaget. Vælg en anden.");
+      const c = await createClub(tx as unknown as Db, ctx, name, slug);
+      await tx.insert(auditLog).values({ action: "club.registered", clubId: c.id, actorUserId: ctx.userId, detail: { slug } });
+      return c;
+    });
   } catch (e) {
     // To der opretter samme adresse på samme tid: den sidste rammer unik-nøglen.
     if (!(await isSlugFree(db, slug))) throw new Error("Den adresse er optaget. Vælg en anden.");
     throw e;
   }
-  await logAudit(db, { action: "club.registered", clubId: club.id, actorUserId: ctx.userId, detail: { slug } });
   return club;
 }
 
