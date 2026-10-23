@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { aiServiceStatus } from "../../services";
 import { db } from "../../lib/db";
 import { getAssistant } from "../../lib/memberAssistant";
@@ -15,6 +16,7 @@ export default async function Help() {
   return (
     <Shell active="/hjaelp" ctx={ctx}>
       <PageHead title="Hjælp" sub="Få svar om dine aktiviteter og betalinger." />
+      <p className="muted small">Leder du efter vejledninger? Se <Link href="/hjaelpecenter">Hjælpecenteret</Link>.</p>
       {!status.available ? (
         <p className="muted">Foreningen har ikke slået AI-hjælp til. Skriv til foreningen, hvis du har et spørgsmål.</p>
       ) : status.needsConsent ? (

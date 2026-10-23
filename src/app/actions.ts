@@ -37,6 +37,7 @@ import {
   setAiService,
   runImport,
   registerClub,
+  submitSupportRequest,
   isImportSource,
   type ImportSource,
   submitSignup,
@@ -1654,4 +1655,14 @@ export async function registerClubAction(formData: FormData) {
     clubId = (await registerClub(db, ctx, { name: str(formData, "name"), slug: opt(formData, "slug") })).id;
   });
   redirect(`/forening/kom-i-gang?klub=${clubId}`);
+}
+
+// --- Hjælpecenter ---
+
+export async function supportRequestAction(formData: FormData) {
+  const { ctx } = await requireSession("/hjaelpecenter/kontakt");
+  await attempt("/hjaelpecenter/kontakt", async () => {
+    await submitSupportRequest(db, ctx, { subject: str(formData, "subject"), message: str(formData, "message"), clubId: opt(formData, "clubId") }, { send: sendMail, to: process.env.SUPPORT_EMAIL });
+  });
+  redirect("/hjaelpecenter/kontakt?sendt=1");
 }
