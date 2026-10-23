@@ -232,6 +232,13 @@
       "when": 1792750260455,
       "tag": "0032_arkiv",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792750610092,
+      "tag": "0033_infoskaerm",
+      "breakpoints": true
     }
   ]
 }

@@ -294,6 +294,7 @@ export * from "./attester";
 export * from "./holdkasse";
 export * from "./afstemninger";
 export * from "./arkiv";
+export * from "./skaerm";
 export * from "./memberStats";
 export * from "./memberService";
 export * from "./modules";

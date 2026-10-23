@@ -28,6 +28,7 @@ export default async function Club({ searchParams }: { searchParams: Promise<{ f
             <Link href={`/forening/tilmeldinger?klub=${c.id}`} className="muted small">Indmeldelse</Link>
             <Link href={`/forening/kontrakter?klub=${c.id}`} className="muted small">Kontrakter</Link>
             <Link href={`/forening/attester?klub=${c.id}`} className="muted small">Børneattester</Link>
+            <Link href={`/forening/skaerme?klub=${c.id}`} className="muted small">Infoskærme</Link>
             <Link href={`/forening/log?klub=${c.id}`} className="muted small">Se aktivitetslog</Link>
           </p>
           <ul className="team-grid">
