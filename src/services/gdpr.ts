@@ -3,12 +3,15 @@
 // Sletning anonymiserer personen i stedet for at fjerne profilrækken: opkrævninger og betalinger skal gemmes
 // efter bogføringsloven, og de hænger på profilen. Alt der identificerer personen fjernes (navn, kontaktoplysninger,
 // fødselsdato, login, beskeder, opslag, svar, tilmeldinger). Slettede personer vises som "Slettet medlem".
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, not, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import {
   auditLog,
   campSignups,
   bookings,
+  childCertificates,
+  contracts,
+  shiftSignups,
   carpoolOffers,
   carpoolPassengers,
   carpoolRequests,
@@ -33,6 +36,7 @@ import {
   savedCards,
   teamMembers,
   teamTasks,
+  volunteerShifts,
   teams,
   users,
 } from "../db/schema";
@@ -99,7 +103,7 @@ async function exportProfile(db: Db, profileId: string) {
     .select({ firstName: profiles.firstName, lastName: profiles.lastName, birthDate: profiles.birthDate, email: profiles.email, phone: profiles.phone, createdAt: profiles.createdAt })
     .from(profiles)
     .where(eq(profiles.id, profileId));
-  const [memberships, roles, teamRows, responses, myCharges, offers, rides, requests, tasks, myFines, matchLineups, matchEventRows, written, myPosts, myConsents, guardians] = await Promise.all([
+  const [memberships, roles, teamRows, responses, myCharges, offers, rides, requests, tasks, myFines, matchLineups, matchEventRows, written, myPosts, myConsents, guardians, myShifts, myContracts, myCertificates] = await Promise.all([
     db
       .select({ club: clubs.name, status: clubMemberships.status, joinedAt: clubMemberships.joinedAt, leftAt: clubMemberships.leftAt, exempt: clubMemberships.exempt })
       .from(clubMemberships)
@@ -139,6 +143,19 @@ async function exportProfile(db: Db, profileId: string) {
       .from(guardianships)
       .innerJoin(profiles, eq(profiles.id, guardianships.guardianProfileId))
       .where(eq(guardianships.childProfileId, profileId)),
+    db
+      .select({ shift: volunteerShifts.title, startsAt: volunteerShifts.startsAt, signedUpAt: shiftSignups.createdAt, cancelledAt: shiftSignups.cancelledAt })
+      .from(shiftSignups)
+      .innerJoin(volunteerShifts, eq(volunteerShifts.id, shiftSignups.shiftId))
+      .where(eq(shiftSignups.profileId, profileId)),
+    db
+      .select({ title: contracts.title, kind: contracts.kind, status: contracts.status, startsOn: contracts.startsOn, endsOn: contracts.endsOn, monthlyAmountOre: contracts.monthlyAmountOre, signedAt: contracts.signedAt, signedName: contracts.signedName, body: contracts.body })
+      .from(contracts)
+      .where(and(eq(contracts.profileId, profileId), ne(contracts.status, "draft"))),
+    db
+      .select({ status: childCertificates.status, reason: childCertificates.reason, consentAt: childCertificates.consentAt, requestedAt: childCertificates.requestedAt, decidedAt: childCertificates.decidedAt, issuedOn: childCertificates.issuedOn, expiresOn: childCertificates.expiresOn })
+      .from(childCertificates)
+      .where(eq(childCertificates.profileId, profileId)),
   ]);
   const paymentRows = myCharges.length
     ? await db
@@ -161,6 +178,9 @@ async function exportProfile(db: Db, profileId: string) {
     chatMessages: written,
     posts: myPosts,
     consents: myConsents,
+    volunteerShifts: myShifts,
+    contracts: myContracts,
+    childCertificates: myCertificates,
   };
 }
 
@@ -247,6 +267,14 @@ async function anonymize(tx: Tx, profileIds: string[], now: Date) {
   await tx.delete(guardianships).where(inArray(guardianships.guardianProfileId, profileIds));
   await tx.update(teamTasks).set({ assigneeProfileId: null }).where(inArray(teamTasks.assigneeProfileId, profileIds));
   await tx.delete(campSignups).where(inArray(campSignups.profileId, profileIds));
+  await tx.delete(shiftSignups).where(inArray(shiftSignups.profileId, profileIds));
+  await tx.delete(childCertificates).where(inArray(childCertificates.profileId, profileIds));
+  // Kontrakter indeholder personens navn og aftalevilkår. Foreningen kan hente dem frem, før personen slettes.
+  // Underskrevne kontrakter med et beløb kan indgå i bogføringen og gemmes derfor uden tekst; resten slettes.
+  const keep = and(inArray(contracts.profileId, profileIds), eq(contracts.status, "signed"), isNotNull(contracts.monthlyAmountOre));
+  await tx.update(contracts).set({ body: "Slettet", title: "Slettet kontrakt", signedName: null, declinedReason: null }).where(keep);
+  await tx.delete(contracts).where(and(inArray(contracts.profileId, profileIds), not(keep!)));
+  if (logins.length) await tx.update(contracts).set({ signedName: null }).where(inArray(contracts.signedByUserId, logins));
   // Holdets bookinger ligger på trænerens profil, men tilhører holdet; kun personlige bookinger slettes.
   await tx.delete(bookings).where(and(inArray(bookings.profileId, profileIds), isNull(bookings.teamId)));
   // Krav, der ikke blev godkendt, slettes med kvitteringer. Godkendte og betalte gemmes (bogføringsloven) og er uden navn, når profilen anonymiseres.

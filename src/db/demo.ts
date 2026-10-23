@@ -21,6 +21,16 @@ import {
   createClub,
   createEvent,
   createBooking,
+  createShift,
+  signUpForShift,
+  createContract,
+  sendContract,
+  signContract,
+  requireCertificate,
+  giveCertificateConsent,
+  recordWrittenConsent,
+  markCertificateRequested,
+  registerCertificateResult,
   createResource,
   createEventSeries,
   createTeam,
@@ -304,4 +314,38 @@ export async function seedBookingDemo(db: Db, demo: Awaited<ReturnType<typeof se
   await createBooking(db, mette, { resourceId: bane.id, teamId: demo.teams.u9.id, startsAt: dayAt(now, 3, 16), endsAt: dayAt(now, 3, 17, 30) });
   await createBooking(db, niklas, { resourceId: bane.id, startsAt: dayAt(now, 5, 18), endsAt: dayAt(now, 5, 19) });
   await createBooking(db, mette, { resourceId: bolde.id, teamId: demo.teams.u9.id, quantity: 8, startsAt: dayAt(now, 3, 16), endsAt: dayAt(now, 3, 17, 30) });
+}
+
+/** Vagtplan, kontrakter og børneattester i demoklubben. Beløbet i kontrakten er kun et eksempel; foreningen sætter det selv. Bruges kun af db:seed. */
+export async function seedVolunteerDemo(db: Db, demo: Awaited<ReturnType<typeof seedDemo>>, now = new Date()) {
+  const karen = await loadAccessContext(db, demo.users.karen.user.id, now);
+  const mette = await loadAccessContext(db, demo.users.mette.user.id, now);
+  const niklas = await loadAccessContext(db, demo.users.niklas.user.id, now);
+  const peter = demo.users.peter;
+  const club = demo.club.id;
+  const kiosk = await createShift(db, karen, club, { title: "Kioskvagt ved hjemmekampen", location: "Klubhuset", startsAt: dayAt(now, 6, 9), endsAt: dayAt(now, 6, 12), slots: 3 });
+  await createShift(db, mette, club, { title: "Kridt banen til U9-stævnet", teamId: demo.teams.u9.id, location: "Bane 3", startsAt: dayAt(now, 8, 16), endsAt: dayAt(now, 8, 17), slots: 2 });
+  await createShift(db, karen, club, { title: "Opsyn ved børnestævnet", description: "Voksne på banen og i omklædningen.", startsAt: dayAt(now, 13, 8), endsAt: dayAt(now, 13, 14), slots: 4, requiresChildCertificate: true });
+  await signUpForShift(db, niklas, kiosk.id);
+
+  // Børneattester: Mette har en gyldig, Peters er bestilt, og Niklas mangler at give samtykke.
+  const metteCert = await requireCertificate(db, karen, club, demo.users.mette.profile.id, "Træner U9 piger");
+  await giveCertificateConsent(db, mette, metteCert);
+  await markCertificateRequested(db, karen, metteCert);
+  const today = new Date(now);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  await registerCertificateResult(db, karen, metteCert, { approved: true, issuedOn: iso(today), expiresOn: iso(new Date(today.getTime() + 3 * 365 * 86400000)) });
+  const peterCert = await requireCertificate(db, karen, club, peter.profile.id, "Træner Senior herrer");
+  await recordWrittenConsent(db, karen, peterCert);
+  await markCertificateRequested(db, karen, peterCert);
+  await requireCertificate(db, karen, club, demo.users.niklas.profile.id, "Hjælper ved børnestævnet");
+
+  // Kontrakter: Mettes er underskrevet, Peters venter på underskrift.
+  const start = iso(today);
+  const end = iso(new Date(today.getTime() + 365 * 86400000));
+  const mc = await createContract(db, karen, club, { profileId: demo.users.mette.profile.id, kind: "coach", title: "Trænerkontrakt U9 piger", body: "Mette er træner for U9 piger i sæsonen 2026/27 og følger foreningens retningslinjer for børn og unge.", startsOn: start, endsOn: end });
+  await sendContract(db, karen, mc.id);
+  await signContract(db, mette, mc.id, `${demo.users.mette.profile.firstName} ${demo.users.mette.profile.lastName}`);
+  const pc = await createContract(db, karen, club, { profileId: peter.profile.id, kind: "coach", title: "Trænerkontrakt Senior herrer", body: "Peter er træner for Senior herrer i sæsonen 2026/27.", startsOn: start, endsOn: end });
+  await sendContract(db, karen, pc.id);
 }
