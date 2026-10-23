@@ -110,8 +110,14 @@ export async function getTeamFund(db: Db, ctx: AccessContext, teamId: string) {
     .where(eq(teamFundEntries.teamId, teamId))
     .orderBy(desc(teamFundEntries.entryDate), desc(teamFundEntries.createdAt))
     .limit(300);
-  const live = rows.filter((r) => !r.e.cancelledAt);
-  const total = (kind: "deposit" | "withdrawal") => live.filter((r) => r.e.kind === kind).reduce((a, r) => a + r.e.amountOre, 0);
+  // Summerne regnes over alle poster, ikke kun de viste.
+  const [sums] = await db
+    .select({
+      deposited: sql<number>`coalesce(sum(case when ${teamFundEntries.kind} = 'deposit' then ${teamFundEntries.amountOre} else 0 end), 0)::int`,
+      spent: sql<number>`coalesce(sum(case when ${teamFundEntries.kind} = 'withdrawal' then ${teamFundEntries.amountOre} else 0 end), 0)::int`,
+    })
+    .from(teamFundEntries)
+    .where(and(eq(teamFundEntries.teamId, teamId), isNull(teamFundEntries.cancelledAt)));
   const players = lead
     ? await db
         .select({ id: profiles.id, firstName: profiles.firstName, lastName: profiles.lastName })
@@ -122,9 +128,9 @@ export async function getTeamFund(db: Db, ctx: AccessContext, teamId: string) {
     : [];
   return {
     canManage: lead,
-    balanceOre: await balanceOf(db, teamId),
-    depositedOre: total("deposit"),
-    spentOre: total("withdrawal"),
+    depositedOre: sums.deposited,
+    spentOre: sums.spent,
+    balanceOre: sums.deposited - sums.spent,
     entries: rows.map((r) => ({
       id: r.e.id,
       kind: r.e.kind,

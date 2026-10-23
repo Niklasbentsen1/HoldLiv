@@ -80,6 +80,7 @@ export default async function TeamFund({ params, searchParams }: { params: Promi
                 <label>
                   Hvad
                   <input name="description" required maxLength={200} placeholder="Fx pizza til sæsonafslutning" />
+                  <span className="muted small block">Teksten kan ses af hele holdet og forældrene. Skriv ikke navne eller private oplysninger.</span>
                 </label>
                 <label>
                   Dato

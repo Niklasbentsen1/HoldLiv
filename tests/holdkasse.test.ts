@@ -127,4 +127,16 @@ describe("holdkasse", () => {
     expect(kept?.amountOre).toBe(1234);
     expect(kept?.payerName).toBeNull();
   });
+
+  it("regner indbetalt og brugt over alle poster, også når der er over 300", async () => {
+    const jonas = await ctxOf("jonas");
+    const before = await getTeamFund(db, jonas, u11);
+    const rows = Array.from({ length: 305 }, (_, i) => ({ team_id: u11, kind: i % 2 ? "withdrawal" : "deposit", amount_ore: 100, description: `Bulk ${i}`, entry_date: "2026-01-01" }));
+    await sql`insert into team_fund_entries ${sql(rows, "team_id", "kind", "amount_ore", "description", "entry_date")}`;
+    const after = await getTeamFund(db, jonas, u11);
+    expect(after.entries).toHaveLength(300);
+    expect(after.depositedOre - before.depositedOre).toBe(153 * 100);
+    expect(after.spentOre - before.spentOre).toBe(152 * 100);
+    expect(after.balanceOre).toBe(after.depositedOre - after.spentOre);
+  });
 });
