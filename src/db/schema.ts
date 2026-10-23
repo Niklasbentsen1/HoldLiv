@@ -1488,3 +1488,23 @@ export const tickets = pgTable(
   },
   (t) => [index("tickets_order_idx").on(t.orderId), index("tickets_event_idx").on(t.ticketEventId)],
 );
+
+// Henvendelser til HoldLiv-support fra hjælpecenteret. Kun den der skrev, kan se sin egen.
+export const supportRequests = pgTable(
+  "support_requests",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Foreningen henvendelsen handler om (valgfri), så support kan se, hvem der skriver.
+    clubId: uuid("club_id").references(() => clubs.id, { onDelete: "set null" }),
+    subject: text("subject").notNull(),
+    message: text("message").notNull(),
+    // Svar-adressen er login'ets e-mail på det tidspunkt, henvendelsen blev sendt.
+    replyEmail: text("reply_email").notNull(),
+    status: text("status").notNull().default("open"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("support_requests_user_idx").on(t.userId, t.createdAt)],
+);

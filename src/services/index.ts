@@ -316,5 +316,6 @@ export * from "./gdpr";
 export * from "./mobile";
 export * from "./import";
 export * from "./oprettelse";
+export * from "./support";
 export * from "./signup";
 export * from "./arrears";
