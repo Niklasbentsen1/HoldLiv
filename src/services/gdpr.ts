@@ -3,7 +3,7 @@
 // Sletning anonymiserer personen i stedet for at fjerne profilrækken: opkrævninger og betalinger skal gemmes
 // efter bogføringsloven, og de hænger på profilen. Alt der identificerer personen fjernes (navn, kontaktoplysninger,
 // fødselsdato, login, beskeder, opslag, svar, tilmeldinger). Slettede personer vises som "Slettet medlem".
-import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, not, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import {
   auditLog,
@@ -270,7 +270,11 @@ async function anonymize(tx: Tx, profileIds: string[], now: Date) {
   await tx.delete(shiftSignups).where(inArray(shiftSignups.profileId, profileIds));
   await tx.delete(childCertificates).where(inArray(childCertificates.profileId, profileIds));
   // Kontrakter indeholder personens navn og aftalevilkår. Foreningen kan hente dem frem, før personen slettes.
-  await tx.delete(contracts).where(inArray(contracts.profileId, profileIds));
+  // Underskrevne kontrakter med et beløb kan indgå i bogføringen og gemmes derfor uden tekst; resten slettes.
+  const keep = and(inArray(contracts.profileId, profileIds), eq(contracts.status, "signed"), isNotNull(contracts.monthlyAmountOre));
+  await tx.update(contracts).set({ body: "Slettet", title: "Slettet kontrakt", signedName: null, declinedReason: null }).where(keep);
+  await tx.delete(contracts).where(and(inArray(contracts.profileId, profileIds), not(keep!)));
+  if (logins.length) await tx.update(contracts).set({ signedName: null }).where(inArray(contracts.signedByUserId, logins));
   // Holdets bookinger ligger på trænerens profil, men tilhører holdet; kun personlige bookinger slettes.
   await tx.delete(bookings).where(and(inArray(bookings.profileId, profileIds), isNull(bookings.teamId)));
   // Krav, der ikke blev godkendt, slettes med kvitteringer. Godkendte og betalte gemmes (bogføringsloven) og er uden navn, når profilen anonymiseres.

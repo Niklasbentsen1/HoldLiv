@@ -169,7 +169,7 @@ export async function signContract(db: Db, ctx: AccessContext, contractId: strin
   if (c.status !== "sent") throw new Error(c.status === "signed" ? "Kontrakten er allerede underskrevet." : "Kontrakten kan ikke underskrives.");
   if (c.bodyHash !== hashOf(c.title, c.body, c.startsOn, c.endsOn, c.monthlyAmountOre)) throw new Error("Kontraktens tekst er ændret efter afsendelsen. Bed foreningen sende den igen.");
   const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLocaleLowerCase("da");
-  if (norm(typedName) !== norm(signerName)) throw new Error(`Skriv dit fulde navn som "${signerName}" for at skrive under.`);
+  if (norm(typedName) !== norm(signerName)) throw new Error("Skriv dit fulde navn, som det står på din profil, for at skrive under.");
   const done = await db
     .update(contracts)
     .set({ status: "signed", signedAt: ctx.now, signedByUserId: ctx.userId, signedName: signerName })

@@ -6,7 +6,7 @@
 //   - Kræver vagten børneattest (fx vagt med børn), kan man kun tage den med en gyldig attest på vagtens dag (se attester.ts).
 //   - Man kan ikke tage to vagter, der overlapper. Afmelding er åben til vagten begynder; admin og holdets træner kan altid fjerne en frivillig.
 //   - Aflyses en vagt, får de tilmeldte besked. Dagen før en vagt får de tilmeldte en påmindelse.
-import { and, asc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { clubMemberships, profiles, shiftSignups, teams, volunteerShifts } from "../db/schema";
 import { assertCan, canActAs, type AccessContext } from "../auth/permissions";
@@ -98,6 +98,16 @@ export async function updateShift(db: Db, ctx: AccessContext, shiftId: string, i
       .from(shiftSignups)
       .where(and(eq(shiftSignups.shiftId, shiftId), isNull(shiftSignups.cancelledAt)));
     if (values.slots < n) throw new Error(`Der er allerede ${n} tilmeldt. Fjern nogen først, eller behold mindst ${n} pladser.`);
+    const signed = await tx.select({ profileId: shiftSignups.profileId, firstName: profiles.firstName }).from(shiftSignups).innerJoin(profiles, eq(profiles.id, shiftSignups.profileId)).where(and(eq(shiftSignups.shiftId, shiftId), isNull(shiftSignups.cancelledAt)));
+    for (const p of signed) {
+      const [clash] = await tx
+        .select({ title: volunteerShifts.title })
+        .from(shiftSignups)
+        .innerJoin(volunteerShifts, eq(volunteerShifts.id, shiftSignups.shiftId))
+        .where(and(eq(shiftSignups.profileId, p.profileId), ne(shiftSignups.shiftId, shiftId), isNull(shiftSignups.cancelledAt), isNull(volunteerShifts.cancelledAt), lt(volunteerShifts.startsAt, values.endsAt), gt(volunteerShifts.endsAt, values.startsAt)));
+      if (clash) throw new Error(`${p.firstName} har allerede vagten ${clash.title} i det nye tidsrum.`);
+      if (values.requiresChildCertificate && !(await hasValidCertificate(tx, s.clubId, p.profileId, values.startsAt))) throw new Error(`${p.firstName} mangler en gyldig børneattest. Fjern ${p.firstName} fra vagten først.`);
+    }
     await tx.update(volunteerShifts).set(values).where(eq(volunteerShifts.id, shiftId));
   });
   await logAudit(db, { action: "shift.updated", clubId: s.clubId, actorUserId: ctx.userId, targetType: "volunteer_shift", targetId: shiftId });
@@ -140,6 +150,8 @@ export async function signUpForShift(db: Db, ctx: AccessContext, shiftId: string
   }
   await db.transaction(async (tx) => {
     // Lås vagten, så to samtidige tilmeldinger ikke begge tager den sidste plads.
+    // Lås også personen, så to samtidige tilmeldinger til overlappende vagter ikke begge består overlap-tjekket.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"shift-person:" + target}, 0))`);
     const [s] = await tx.select().from(volunteerShifts).where(eq(volunteerShifts.id, shiftId)).for("update");
     if (s.cancelledAt) throw new Error("Vagten er aflyst.");
     const active = await tx.select({ profileId: shiftSignups.profileId }).from(shiftSignups).where(and(eq(shiftSignups.shiftId, shiftId), isNull(shiftSignups.cancelledAt)));

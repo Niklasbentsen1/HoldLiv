@@ -85,6 +85,24 @@ describe("vagtplan", () => {
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   });
 
+  it("samme person kan ikke tage to overlappende vagter samtidigt", async () => {
+    const s1 = await shift({ title: "Samtidig 1", slots: 2, startsAt: at("23", 10), endsAt: at("23", 12) });
+    const s2 = await shift({ title: "Samtidig 2", slots: 2, startsAt: at("23", 11), endsAt: at("23", 13) });
+    const p = await member("race-p@vagt.test", "Samtidig");
+    const results = await Promise.allSettled([signUpForShift(db, p.ctx, s1.id), signUpForShift(db, p.ctx, s2.id)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  });
+
+  it("en vagt kan ikke flyttes ind i en tilmeldts anden vagt, eller kræve attest, de ikke har", async () => {
+    const s1 = await shift({ title: "Flyt 1", slots: 2, startsAt: at("24", 10), endsAt: at("24", 11) });
+    const s2 = await shift({ title: "Flyt 2", slots: 2, startsAt: at("24", 12), endsAt: at("24", 13) });
+    const p = await member("flyt@vagt.test", "Flyt");
+    await signUpForShift(db, p.ctx, s1.id);
+    await signUpForShift(db, p.ctx, s2.id);
+    await expect(updateShift(db, admin, s2.id, { title: "Flyt 2", startsAt: at("24", 10, 30), endsAt: at("24", 11, 30), slots: 2 })).rejects.toThrow("allerede");
+    await expect(updateShift(db, admin, s2.id, { title: "Flyt 2", startsAt: s2.startsAt, endsAt: s2.endsAt, slots: 2, requiresChildCertificate: true })).rejects.toThrow("børneattest");
+  });
+
   it("kun aktive medlemmer, mindst 15 år, og forældre kan tage vagter for børn", async () => {
     const s = await shift({ title: "Børnefest", slots: 5, startsAt: at("16", 10), endsAt: at("16", 12) });
     const outsider = await registerUser(db, "ude@vagt.test", { firstName: "Ude", lastName: "Test", birthDate: "1985-01-01" });
@@ -388,9 +406,15 @@ describe("gdpr", () => {
     expect(data.people[0].volunteerShifts).toHaveLength(1);
     expect(data.people[0].contracts).toHaveLength(1);
     expect(data.people[0].childCertificates).toHaveLength(1);
+    // en underskrevet kontrakt med beløb gemmes uden tekst og navn
+    const paid = await createContract(db, admin, clubId, { profileId: p.profile.id, kind: "coach", title: "Løn", body: "Hemmelig tekst", startsOn: "2026-06-01", monthlyAmountOre: 100_000 });
+    await sendContract(db, admin, paid.id);
+    await signContract(db, p.ctx, paid.id, "Gitte Test");
     await deleteMyAccount(db, p.ctx, "gdpr@vagt.test");
+    const kept = await db.select().from(contracts).where(eq(contracts.profileId, p.profile.id));
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatchObject({ body: "Slettet", signedName: null, monthlyAmountOre: 100_000 });
     expect(await db.select().from(shiftSignups).where(eq(shiftSignups.profileId, p.profile.id))).toEqual([]);
-    expect(await db.select().from(contracts).where(eq(contracts.profileId, p.profile.id))).toEqual([]);
     expect(await db.select().from(childCertificates).where(eq(childCertificates.profileId, p.profile.id))).toEqual([]);
     void guardianships;
   });

@@ -74,6 +74,7 @@ export default async function Certificates({ searchParams }: { searchParams: Pro
           <label>
             Hvorfor <span className="muted">(valgfrit)</span>
             <input name="reason" maxLength={200} placeholder="Fx Hjælper ved U9" />
+            <span className="muted small">Skriv kun hvorfor, aldrig indhold fra selve attesten.</span>
           </label>
           <button className="primary">Kræv attest</button>
         </form>
