@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { eventChatVisible, getEventDetail } from "../../../services";
+import { eventChatVisible, getEventDetail, listEnabledModules } from "../../../services";
 import { db } from "../../../lib/db";
 import { requireSession } from "../../../lib/session";
 import { STATUS_LABEL, dayHeading, time, when } from "../../../lib/format";
@@ -16,6 +16,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const { ctx } = await requireSession(`/aktivitet/${id}`);
   const e = await getEventDetail(db, ctx, id);
   const hasChat = await eventChatVisible(db, ctx, id);
+  const hasMatchSheet = e.type === "match" && (await listEnabledModules(db, ctx, e.teamId)).some((m) => m.key === "matches");
   const back = `/aktivitet/${id}`;
   const mine = e.players.filter((p) => p.mine);
   const cancelled = !!e.cancelledAt;
@@ -95,6 +96,13 @@ export default async function EventPage({ params, searchParams }: { params: Prom
               )}
             </div>
             {e.description && <p className="description">{e.description}</p>}
+            {hasMatchSheet && (
+              <p>
+                <Link href={`/hold/${e.teamId}/kampe/${id}`} className="button">
+                  <Icon name="ball" size={16} /> Opstilling og referat
+                </Link>
+              </p>
+            )}
             {hasChat && (
               <p>
                 <Link href={`/hold/${e.teamId}/chat?aktivitet=${id}`} className="button">

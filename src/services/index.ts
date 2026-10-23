@@ -293,6 +293,7 @@ export * from "./modules";
 export * from "./carpool";
 export * from "./tasks";
 export * from "./fines";
+export * from "./matches";
 export * from "./notifications";
 export * from "./calendarFeed";
 export * from "./chat";

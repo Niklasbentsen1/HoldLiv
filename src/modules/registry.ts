@@ -5,7 +5,7 @@
 // indstillinger, som foreningen selv vælger. HoldLiv fastsætter aldrig beløb: satser og
 // priser i et modul sættes af foreningens egen admin eller træner.
 
-export type ModuleKey = "carpool" | "tasks" | "fines" | "chat";
+export type ModuleKey = "carpool" | "tasks" | "fines" | "chat" | "matches";
 
 export type ConfigField =
   | { key: string; label: string; type: "int"; min: number; max: number; default: number; hint?: string }
@@ -64,6 +64,17 @@ export const MODULES: Registry = {
         default: 12,
         hint: "Spillere under denne alder kan ikke få bøder.",
       },
+    ],
+    available: true,
+  },
+  matches: {
+    key: "matches",
+    name: "Kampe og opstilling",
+    description: "Opstilling til kampen, resultat og kampreferat, og statistik over spilletid, mål og kort. Rangliste over spillerne er slået fra som standard.",
+    path: "kampe",
+    fields: [
+      { key: "startersCount", label: "Spillere på banen", type: "int", min: 3, max: 11, default: 7, hint: "Fx 5 eller 7 på de små årgange og 11 på de store." },
+      { key: "showRankings", label: "Vis topscorerliste til hele holdet", type: "bool", default: false, hint: "Slået fra: spillere og forældre ser kun deres egne tal. Trænerne ser altid alle." },
     ],
     available: true,
   },
