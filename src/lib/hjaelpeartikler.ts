@@ -131,7 +131,7 @@ export const ARTICLES: Article[] = [
     keywords: ["barn", "børn", "tilføj barn", "værge", "familie"],
     body: [
       "Tilføj dine børn under Familie. Du svarer på aktiviteter og betaler for dem.",
-      "Barnet har ikke eget login. Du styrer barnets profil, så længe barnet er tilmeldt via dig.",
+      "Barnet har ikke eget login. Når barnet fylder 18, kan du ikke længere svare eller betale for barnet. Skriv til foreningen, så hjælper de den unge i gang med eget login.",
     ],
     link: { href: "/familie", label: "Gå til Familie" },
   },
