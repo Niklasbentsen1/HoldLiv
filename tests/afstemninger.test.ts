@@ -97,6 +97,9 @@ describe("afstemninger", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].profile_id).toBeNull();
     expect(rows[0].voted_by_user_id).toBeNull();
+    // Tidsstemplet må ikke kunne bruges til at koble stemmen til den, der stemte.
+    const link = await sql`select count(*)::int as n from poll_votes v join poll_voters m on m.poll_id = v.poll_id and m.created_at = v.created_at where v.poll_id = ${anon.id}`;
+    expect(link[0].n).toBe(0);
     // Stemmen kan ikke skiftes eller trækkes tilbage, og man kan ikke stemme to gange.
     await expect(vote(db, await ctxOf("ali"), a.id, [a.options[0].id], kid("noor"))).rejects.toThrow(/anonym/);
     await expect(withdrawVote(db, await ctxOf("ali"), a.id, kid("noor"))).rejects.toThrow(/anonym/);

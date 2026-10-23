@@ -194,7 +194,7 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
         <input type="hidden" name="clubId" value={club.id} />
         <label className="grow">
           <input name="invalid" type="checkbox" defaultChecked={club.cardInvalidWhenOverdue} /> Medlemskortet er ikke gyldigt, når medlemmet har en forfalden opkrævning
-          <span className="muted small block">Trænere, der scanner kortet, ser kun &quot;ikke gyldigt&quot;, aldrig at det skyldes betaling.</span>
+          <span className="muted small block">Trænere, der scanner kortet, ser kun &quot;ikke gyldigt&quot;, ikke at det skyldes betaling, men de kan selv regne det ud, hvis de kender reglen.</span>
         </label>
         <button>Gem</button>
       </form>

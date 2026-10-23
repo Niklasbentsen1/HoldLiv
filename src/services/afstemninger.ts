@@ -120,7 +120,8 @@ export async function vote(db: Db, ctx: AccessContext, pollId: string, optionIds
     if (existing && p.anonymous) throw new Error("Stemmen er afgivet. I en anonym afstemning kan man ikke skifte stemme.");
     if (!existing) await tx.insert(pollVoters).values({ pollId, profileId: target });
     else await tx.delete(pollVotes).where(and(eq(pollVotes.pollId, pollId), eq(pollVotes.profileId, target)));
-    await tx.insert(pollVotes).values(chosen.map((optionId) => ({ pollId, optionId, profileId: p.anonymous ? null : target, votedByUserId: p.anonymous ? null : ctx.userId })));
+    // Anonyme stemmer får afstemningens tidspunkt, så de ikke kan kobles til personen via tidsstemplet.
+    await tx.insert(pollVotes).values(chosen.map((optionId) => ({ pollId, optionId, profileId: p.anonymous ? null : target, votedByUserId: p.anonymous ? null : ctx.userId, ...(p.anonymous ? { createdAt: fresh.createdAt } : {}) })));
   });
 }
 
