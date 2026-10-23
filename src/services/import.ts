@@ -22,19 +22,30 @@ export const TARGETS = {
   guardianName: "Forælder: navn",
   guardianEmail: "Forælder: e-mail",
   guardianPhone: "Forælder: telefon",
+  status: "Status (udmeldte springes over)",
 } as const;
 export type Target = keyof typeof TARGETS;
+/** Hvor listen kommer fra. Klubmodul og Holdsport har en statuskolonne, hvor udmeldte medlemmer springes over. */
+export const IMPORT_SOURCES = {
+  excel: "Excel eller anden fil",
+  klubmodul: "Klubmodul",
+  holdsport: "Holdsport",
+} as const;
+export type ImportSource = keyof typeof IMPORT_SOURCES;
+export const isImportSource = (v: unknown): v is ImportSource => typeof v === "string" && v in IMPORT_SOURCES;
+const LEFT = /^(udmeldt|udmeldte|ophørt|ophoert|inaktiv|slettet|stoppet|fratrådt|inactive|left|resigned|deleted)/i;
 export type ColumnMap = { target: Target | "custom" | "ignore"; name?: string };
 
 const norm = (h: string) => h.toLowerCase().replace(/[^a-zæøå0-9]/g, "");
 const ALIASES: Record<Target, string[]> = {
   firstName: ["fornavn", "fornavne", "firstname", "fname", "givenname"],
   lastName: ["efternavn", "lastname", "surname", "familyname"],
-  fullName: ["navn", "name", "medlem", "medlemsnavn", "fuldtnavn", "fullname", "spiller"],
+  fullName: ["fuldenavn", "navn", "name", "medlem", "medlemsnavn", "fuldtnavn", "fullname", "spiller"],
   birthDate: ["fødselsdato", "foedselsdato", "fødselsdag", "birthdate", "birthday", "dob", "dateofbirth", "født"],
   email: ["email", "emailadresse", "mail", "mailadresse", "epost"],
-  phone: ["telefon", "tlf", "tlfnr", "mobil", "mobilnr", "mobilnummer", "telefonnr", "telefonnummer", "phone", "mobile", "phonenumber"],
-  team: ["hold", "afdeling", "afdelinger", "team", "teams", "department", "gruppe", "holdafdeling", "aktivitet"],
+  phone: ["telefon", "tlf", "tlfnr", "mobil", "mobilnr", "mobilnummer", "telefonnr", "telefonnummer", "mobiltelefon", "telefonmobil", "telefonprivat", "phone", "mobile", "phonenumber"],
+  team: ["holdnavn", "hold", "afdeling", "afdelinger", "team", "teams", "department", "gruppe", "holdafdeling", "aktivitet"],
+  status: ["status", "medlemsstatus"],
   guardianName: ["forælder", "forældernavn", "forælder1", "forælder1navn", "værge", "værgenavn", "kontaktperson", "parent", "parentname", "guardian", "guardianname"],
   guardianEmail: ["forældermail", "forælderemail", "forældersemail", "værgemail", "værgeemail", "kontaktpersonemail", "parentemail", "guardianemail", "forælder1email", "forælder1mail"],
   guardianPhone: ["forældertelefon", "forældertlf", "forældermobil", "forældersmobil", "værgetelefon", "værgemobil", "kontaktpersontlf", "kontaktpersontelefon", "parentphone", "guardianphone", "forælder1telefon", "forælder1mobil"],
@@ -42,10 +53,10 @@ const ALIASES: Record<Target, string[]> = {
 const ALIAS_LOOKUP = new Map<string, Target>(Object.entries(ALIASES).flatMap(([t, list]) => list.map((a) => [a, t as Target] as const)));
 
 /** Gætter, hvad hver kolonne er. Ukendte kolonner bliver til egne felter, og hver type bruges højst én gang. */
-export function detectMapping(headers: string[]): ColumnMap[] {
+export function detectMapping(headers: string[], source: ImportSource = "excel"): ColumnMap[] {
   const used = new Set<Target>();
   return headers.map((h) => {
-    if (norm(h) === "status") return { target: "ignore" };
+    if (norm(h) === "status" && source === "excel") return { target: "ignore" };
     const t = ALIAS_LOOKUP.get(norm(h));
     if (t && !used.has(t)) {
       used.add(t);
@@ -91,12 +102,14 @@ export interface ImportRow {
   custom: Record<string, string>;
   errors: string[];
   warnings: string[];
-  status: "new" | "existing" | "duplicate" | "error";
+  status: "new" | "existing" | "duplicate" | "error" | "inactive";
 }
 export interface ImportReport {
   rows: ImportRow[];
   counts: { new: number; existing: number; duplicate: number; error: number };
   newTeams: string[];
+  /** Udmeldte medlemmer (efter statuskolonnen), som ikke flyttes med. */
+  inactive: number;
   commit?: { created: number; updated: number; teamsCreated: number };
 }
 
@@ -110,6 +123,7 @@ function parseRows(table: string[][], mapping: ColumnMap[]): ImportRow[] {
     };
     const errors: string[] = [];
     const warnings: string[] = [];
+    const left = LEFT.test(get("status"));
     let firstName = get("firstName");
     let lastName = get("lastName");
     if (!firstName && !lastName && get("fullName")) {
@@ -146,7 +160,7 @@ function parseRows(table: string[][], mapping: ColumnMap[]): ImportRow[] {
       custom,
       errors,
       warnings,
-      status: errors.length ? "error" : "new",
+      status: left ? "inactive" : errors.length ? "error" : "new",
     });
   }
   return out;
@@ -155,14 +169,14 @@ function parseRows(table: string[][], mapping: ColumnMap[]): ImportRow[] {
 const keyOf = (p: Person, birthDate: string | null) => `${p.firstName} ${p.lastName}`.toLowerCase() + "|" + (birthDate ?? p.email ?? "");
 
 /** Læser filen og viser, hvad der vil ske. Med commit gemmes det i én transaktion. Kun foreningens admin. */
-export async function runImport(db: Db, ctx: AccessContext, clubId: string, text: string, mapping: ColumnMap[] | null, commit: boolean): Promise<ImportReport & { headers: string[]; mapping: ColumnMap[] }> {
+export async function runImport(db: Db, ctx: AccessContext, clubId: string, text: string, mapping: ColumnMap[] | null, commit: boolean, source: ImportSource = "excel"): Promise<ImportReport & { headers: string[]; mapping: ColumnMap[] }> {
   assertCan(ctx, { action: "club.manage", clubId });
   if (text.length > MAX_IMPORT_BYTES) throw new Error("Filen er for stor. Del den op i flere filer.");
   const table = parseCsv(text);
   if (table.length < 2) throw new Error("Filen skal have en overskriftsrække og mindst ét medlem.");
   if (table.length - 1 > MAX_IMPORT_ROWS) throw new Error(`Højst ${MAX_IMPORT_ROWS} medlemmer ad gangen.`);
   const headers = table[0];
-  const map = mapping && mapping.length === headers.length ? mapping : detectMapping(headers);
+  const map = mapping && mapping.length === headers.length ? mapping : detectMapping(headers, source);
   if (!map.some((m) => m.target === "firstName" || m.target === "fullName")) throw new Error("Kunne ikke finde en kolonne med navne. Vælg hvilken kolonne der er navn.");
   const rows = parseRows(table, map);
 
@@ -178,7 +192,7 @@ export async function runImport(db: Db, ctx: AccessContext, clubId: string, text
   const seen = new Set<string>();
   const matchIds = new Map<ImportRow, string>();
   for (const r of rows) {
-    if (r.status === "error") continue;
+    if (r.status === "error" || r.status === "inactive") continue;
     const k = keyOf(r.person, r.birthDate);
     if (seen.has(k)) {
       r.status = "duplicate";
@@ -192,10 +206,11 @@ export async function runImport(db: Db, ctx: AccessContext, clubId: string, text
       matchIds.set(r, id);
     }
   }
-  const newTeams = [...new Map(rows.filter((r) => r.status !== "error" && r.status !== "duplicate").flatMap((r) => r.teams).filter((t) => !teamByName.has(t.toLowerCase())).map((t) => [t.toLowerCase(), t])).values()];
+  const newTeams = [...new Map(rows.filter((r) => r.status !== "error" && r.status !== "duplicate" && r.status !== "inactive").flatMap((r) => r.teams).filter((t) => !teamByName.has(t.toLowerCase())).map((t) => [t.toLowerCase(), t])).values()];
   const counts = { new: 0, existing: 0, duplicate: 0, error: 0 };
-  for (const r of rows) counts[r.status]++;
-  const report = { rows, counts, newTeams, headers, mapping: map } as ImportReport & { headers: string[]; mapping: ColumnMap[] };
+  let inactive = 0;
+  for (const r of rows) (r.status === "inactive" ? inactive++ : counts[r.status]++);
+  const report = { rows, counts, newTeams, inactive, headers, mapping: map } as ImportReport & { headers: string[]; mapping: ColumnMap[] };
   if (!commit) return report;
   if (counts.error > 0) throw new Error("Ret fejlene i filen først. Ingen medlemmer er gemt.");
 
@@ -224,7 +239,7 @@ export async function runImport(db: Db, ctx: AccessContext, clubId: string, text
     }
 
     for (const r of rows) {
-      if (r.status === "duplicate") continue;
+      if (r.status === "duplicate" || r.status === "inactive") continue;
       let profileId = matchIds.get(r);
       if (profileId) {
         // Eksisterende medlem: udfyld kun det, der mangler, og overskriv aldrig.
@@ -263,6 +278,6 @@ export async function runImport(db: Db, ctx: AccessContext, clubId: string, text
     }
     return { created, updated, teamsCreated };
   });
-  await logAudit(db, { action: "members.imported", clubId, actorUserId: ctx.userId, detail: { created: report.commit.created, updated: report.commit.updated, rows: rows.length } });
+  await logAudit(db, { action: "members.imported", clubId, actorUserId: ctx.userId, detail: { created: report.commit.created, updated: report.commit.updated, rows: rows.length, skippedLeft: inactive, source } });
   return report;
 }

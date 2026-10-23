@@ -37,6 +37,8 @@ import {
   setAiService,
   runImport,
   registerClub,
+  isImportSource,
+  type ImportSource,
   submitSignup,
   saveSignupSettings,
   decideSignup,
@@ -330,16 +332,19 @@ export interface ImportState {
   headers?: string[];
   mapping?: ColumnMap[];
   counts?: ImportReport["counts"];
+  inactive?: number;
+  source?: ImportSource;
   newTeams?: string[];
   sample?: { line: number; name: string; status: string; notes: string[] }[];
   done?: { created: number; updated: number; teamsCreated: number };
 }
 
-const STATUS_LABEL = { new: "Ny", existing: "Findes", duplicate: "Dublet", error: "Fejl" } as const;
+const STATUS_LABEL = { new: "Ny", existing: "Findes", duplicate: "Dublet", error: "Fejl", inactive: "Udmeldt" } as const;
 
 export async function importAction(_: ImportState, formData: FormData): Promise<ImportState> {
   const { ctx } = await requireSession();
   const clubId = str(formData, "clubId");
+  const source: ImportSource = isImportSource(formData.get("source")) ? (formData.get("source") as ImportSource) : "excel";
   const file = formData.get("file");
   const text = typeof file === "object" && file && "arrayBuffer" in file && file.size > 0 ? (file.size > MAX_IMPORT_BYTES ? null : decodeCsvBytes(new Uint8Array(await file.arrayBuffer()))) : String(formData.get("text") ?? "");
   if (text === null) return { error: "Filen er for stor. Del den op i flere filer." };
@@ -354,13 +359,15 @@ export async function importAction(_: ImportState, formData: FormData): Promise<
     });
   }
   try {
-    const report = await runImport(db, ctx, clubId, text, mapping, formData.get("intent") === "commit");
+    const report = await runImport(db, ctx, clubId, text, mapping, formData.get("intent") === "commit", source);
     if (report.commit) revalidatePath("/kasse/medlemmer");
     return {
       text,
       headers: report.headers,
       mapping: report.mapping,
       counts: report.counts,
+      inactive: report.inactive,
+      source,
       newTeams: report.newTeams,
       // Rækker med fejl og advarsler først, så de første "nye" rækker, så tegnfejl (æøå) kan ses.
       sample: [...report.rows.filter((r) => r.status !== "new" || r.warnings.length), ...report.rows.filter((r) => r.status === "new" && !r.warnings.length).slice(0, 5)].slice(0, 40).map((r) => ({
