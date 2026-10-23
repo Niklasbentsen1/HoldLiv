@@ -1336,3 +1336,25 @@ export const clubDocuments = pgTable(
   },
   (t) => [index("club_documents_club_idx").on(t.clubId, t.audience), index("club_documents_team_idx").on(t.teamId)],
 );
+
+// --- Infoskærm ---
+
+// En skærm i klubhuset eller hallen. Siden /skaerm/<token> viser dagens og ugens aktiviteter og de seneste nyheder uden login,
+// så linket er hemmeligt og kan nulstilles. Skærmen viser aldrig navne på personer, svar eller betalinger.
+export const infoScreens = pgTable(
+  "info_screens",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    token: text("token").notNull().unique(),
+    // En fast besked øverst, fx "Husk at tage skoene af i hallen".
+    message: text("message"),
+    showNews: boolean("show_news").notNull().default(true),
+    daysAhead: integer("days_ahead").notNull().default(3),
+    createdAt: createdAt(),
+  },
+  (t) => [index("info_screens_club_idx").on(t.clubId)],
+);

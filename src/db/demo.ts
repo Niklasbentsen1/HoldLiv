@@ -10,6 +10,8 @@ import { loadAccessContext } from "../auth/context";
 import {
   addClubMember,
   addFundEntry,
+  createScreen,
+  uploadDocument,
   createPoll,
   vote,
   addMatchEvent,
@@ -376,4 +378,13 @@ export async function seedPollDemo(db: Db, demo: Awaited<ReturnType<typeof seedD
   const poll = await createPoll(db, mette, u9, { question: "Hvornår skal vi holde sæsonafslutning?", options: ["Fredag den 5. juni", "Lørdag den 6. juni", "Søndag den 7. juni"] });
   const [option] = await db.select().from(pollOptions).where(eq(pollOptions.pollId, poll.id)).orderBy(pollOptions.position);
   await vote(db, await loadAccessContext(db, demo.users.ali.user.id, now), poll.id, [option.id], demo.kids.noor.id);
+}
+
+/** Dokumentarkiv og en infoskærm i demoklubben. Filen er en lille opdigtet PDF. */
+export async function seedArchiveDemo(db: Db, demo: Awaited<ReturnType<typeof seedDemo>>, now = new Date()) {
+  const karen = await loadAccessContext(db, demo.users.karen.user.id, now);
+  const pdf = new TextEncoder().encode("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF");
+  await uploadDocument(db, karen, demo.club.id, { audience: "club", title: "Vedtægter for Skovby IF", category: "Vedtægter", fileName: "vedtaegter.pdf", bytes: pdf });
+  await uploadDocument(db, karen, demo.club.id, { audience: "board", title: "Referat fra bestyrelsesmødet", category: "Referater", fileName: "referat.pdf", bytes: pdf });
+  await createScreen(db, karen, demo.club.id, { name: "Klubhuset", message: "Husk at tage skoene af i hallen" });
 }

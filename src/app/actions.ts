@@ -117,6 +117,10 @@ import {
   setTeamDefaultFee,
   saveModuleMatrix as saveModules,
   addFundEntry,
+  createScreen,
+  deleteScreen,
+  resetScreenToken,
+  updateScreen,
   deleteDocument,
   replaceDocumentFile,
   updateDocumentInfo,
@@ -809,6 +813,27 @@ export const replaceDocumentAction = async (f: FormData) =>
 export const updateDocumentAction = async (f: FormData) =>
   archiveAction((ctx) => updateDocumentInfo(db, ctx, str(f, "documentId"), { title: str(f, "title"), description: opt(f, "description"), category: opt(f, "category") }));
 export const deleteDocumentAction = async (f: FormData) => archiveAction((ctx) => deleteDocument(db, ctx, str(f, "documentId")));
+
+// --- Infoskærm ---
+
+async function screenAction(formData: FormData, fn: (ctx: Awaited<ReturnType<typeof requireSession>>["ctx"]) => Promise<unknown>) {
+  const { ctx } = await requireSession();
+  const back = `/forening/skaerme?klub=${str(formData, "clubId")}`;
+  await attempt(back, () => fn(ctx));
+  revalidatePath(back);
+  redirect(back);
+}
+
+const screenInput = (f: FormData) => ({
+  name: str(f, "name"),
+  message: opt(f, "message"),
+  showNews: f.get("showNews") === "1",
+  daysAhead: Number(str(f, "daysAhead") || 3),
+});
+export const createScreenAction = async (f: FormData) => screenAction(f, (ctx) => createScreen(db, ctx, str(f, "clubId"), screenInput(f)));
+export const updateScreenAction = async (f: FormData) => screenAction(f, (ctx) => updateScreen(db, ctx, str(f, "screenId"), screenInput(f)));
+export const resetScreenTokenAction = async (f: FormData) => screenAction(f, (ctx) => resetScreenToken(db, ctx, str(f, "screenId")));
+export const deleteScreenAction = async (f: FormData) => screenAction(f, (ctx) => deleteScreen(db, ctx, str(f, "screenId")));
 
 // --- Kampe: opstilling, resultat, referat ---
 
