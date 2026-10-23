@@ -31,6 +31,14 @@ describe("hjemmeside", () => {
     expect(await getPublicSite(db, "../../etc")).toBeNull();
   });
 
+  it("har kalenderen slået fra, til foreningen selv tænder den", async () => {
+    const { clubs } = await import("../src/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const [c] = await db.select().from(clubs).where(eq(clubs.id, clubId));
+    expect(c.siteShowCalendar).toBe(false);
+    expect(c.siteEnabled).toBe(false);
+  });
+
   it("lader kun admin ændre indstillingerne", async () => {
     for (const k of ["mette", "sofie", "ali"] as const) await expect(saveSiteSettings(db, await ctxOf(k), clubId, base)).rejects.toBeInstanceOf(ForbiddenError);
     const karen = await ctxOf("karen");

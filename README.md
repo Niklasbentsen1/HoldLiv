@@ -225,4 +225,4 @@ Skærpet (arbejdsplan 38, del 6): i en anonym afstemning gemmes stemmen uden pro
 
 ## Hjemmeside
 
-Foreningens admin tænder en offentlig side på `/klub/<slug>` under Forening, Hjemmeside. Siden kræver ikke login og viser kun det, foreningen selv har valgt: velkomsttekst og kontakt, holdenes navne og sæson, aktiviteter de næste 30 dage (titel, tid, sted, hold), de nyheder ledelsen har markeret "vis på hjemmesiden", og link til online indmeldelse. Aldrig medlemmer, trænere, børn, svar eller betalinger. Eget domæne og skabeloner er ikke bygget endnu.
+Foreningens admin tænder en offentlig side på `/klub/<slug>` under Forening, Hjemmeside. Siden kræver ikke login og viser kun det, foreningen selv har valgt: velkomsttekst og kontakt, holdenes navne og sæson, aktiviteter de næste 30 dage (titel, tid, sted, hold; slået fra som standard, fordi børneholdenes tider så bliver offentlige), de nyheder ledelsen har markeret "vis på hjemmesiden", og link til online indmeldelse. Aldrig medlemmer, trænere, børn, svar eller betalinger. Eget domæne og skabeloner er ikke bygget endnu.

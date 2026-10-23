@@ -51,6 +51,9 @@ export default async function SiteSettings({ searchParams }: { searchParams: Pro
           <input type="checkbox" name="showCalendar" defaultChecked={club.siteShowCalendar} /> Vis kommende aktiviteter de næste 30 dage
         </label>
         <p className="muted small">
+          Slået fra som standard. Slår du det til, bliver alle holds træningstider, kampe og steder, også børneholdenes, offentlige og kan findes via søgemaskiner.
+        </p>
+        <p className="muted small">
           Nyheder vises kun, hvis du under Nyheder trykker "Vis på hjemmesiden" på en nyhed for hele foreningen. Indmeldelseslinket vises, når online indmeldelse er åben.
         </p>
         <button className="primary">Gem</button>

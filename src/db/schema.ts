@@ -195,7 +195,7 @@ export const clubs = pgTable("clubs", {
   siteIntro: text("site_intro"),
   siteContact: text("site_contact"),
   siteShowTeams: boolean("site_show_teams").notNull().default(true),
-  siteShowCalendar: boolean("site_show_calendar").notNull().default(true),
+  siteShowCalendar: boolean("site_show_calendar").notNull().default(false),
   createdAt: createdAt(),
 });
 
