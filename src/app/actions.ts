@@ -79,6 +79,24 @@ import {
   approveBooking,
   rejectBooking,
   cancelBooking,
+  createShift,
+  updateShift,
+  cancelShift,
+  signUpForShift,
+  cancelShiftSignup,
+  createContract,
+  updateContract,
+  deleteDraftContract,
+  sendContract,
+  signContract,
+  declineContract,
+  cancelContract,
+  requireCertificate,
+  giveCertificateConsent,
+  recordWrittenConsent,
+  markCertificateRequested,
+  registerCertificateResult,
+  removeCertificate,
   cancelExpense,
   decideExpense,
   markExpensePaid,
@@ -1207,4 +1225,136 @@ export async function cancelBookingAction(formData: FormData) {
   await attempt(back, () => cancelBooking(db, ctx, str(formData, "bookingId")));
   revalidatePath("/booking");
   revalidatePath("/kasse/booking");
+}
+
+// --- Vagtplan, kontrakter og børneattester ---
+
+const shiftInput = (f: FormData) => ({
+  title: str(f, "title"),
+  description: opt(f, "description"),
+  location: opt(f, "location"),
+  startsAt: parseLocalDateTime(str(f, "startsAt")),
+  endsAt: parseLocalDateTime(str(f, "endsAt")),
+  slots: Number(str(f, "slots") || 1),
+  teamId: opt(f, "teamId"),
+  requiresChildCertificate: f.get("requiresChildCertificate") === "1",
+});
+
+export async function newShiftAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  // scope = "foreningsId|holdId" (holdId tomt for en vagt for hele foreningen)
+  const [clubId, teamId] = str(formData, "scope").split("|");
+  await attempt("/vagtplan", () => createShift(db, ctx, clubId, { ...shiftInput(formData), teamId: teamId || null }));
+  revalidatePath("/vagtplan");
+}
+
+export async function editShiftAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/vagtplan", () => updateShift(db, ctx, str(formData, "shiftId"), shiftInput(formData)));
+  revalidatePath("/vagtplan");
+}
+
+export async function cancelShiftAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/vagtplan", async () => cancelShift(db, ctx, str(formData, "shiftId"), await deliverFromEnv()));
+  revalidatePath("/vagtplan");
+}
+
+export async function takeShiftAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/vagtplan", () => signUpForShift(db, ctx, str(formData, "shiftId"), opt(formData, "profileId") ?? undefined));
+  revalidatePath("/vagtplan");
+}
+
+export async function leaveShiftAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/vagtplan", () => cancelShiftSignup(db, ctx, str(formData, "shiftId"), str(formData, "profileId")));
+  revalidatePath("/vagtplan");
+}
+
+const clubPage = (f: FormData, path: string) => `/forening/${path}?klub=${encodeURIComponent(str(f, "clubId"))}`;
+
+export async function newContractAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const krValue = str(formData, "amount");
+  await attempt(clubPage(formData, "kontrakter"), () =>
+    createContract(db, ctx, str(formData, "clubId"), {
+      profileId: str(formData, "profileId"),
+      kind: str(formData, "kind") as "coach" | "player" | "volunteer" | "other",
+      title: str(formData, "title"),
+      body: str(formData, "body"),
+      startsOn: str(formData, "startsOn"),
+      endsOn: opt(formData, "endsOn"),
+      monthlyAmountOre: krValue ? parseKr(krValue) : null,
+    }),
+  );
+  revalidatePath("/forening/kontrakter");
+}
+
+export async function editContractAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const krValue = str(formData, "amount");
+  await attempt(clubPage(formData, "kontrakter"), () =>
+    updateContract(db, ctx, str(formData, "contractId"), {
+      kind: str(formData, "kind") as "coach" | "player" | "volunteer" | "other",
+      title: str(formData, "title"),
+      body: str(formData, "body"),
+      startsOn: str(formData, "startsOn"),
+      endsOn: opt(formData, "endsOn"),
+      monthlyAmountOre: krValue ? parseKr(krValue) : null,
+    }),
+  );
+  revalidatePath("/forening/kontrakter");
+}
+
+export async function contractStepAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const id = str(formData, "contractId");
+  const step = str(formData, "step");
+  await attempt(clubPage(formData, "kontrakter"), async () => {
+    if (step === "send") return sendContract(db, ctx, id, await deliverFromEnv());
+    if (step === "cancel") return cancelContract(db, ctx, id);
+    if (step === "delete") return deleteDraftContract(db, ctx, id);
+    throw new Error("Ukendt handling.");
+  });
+  revalidatePath("/forening/kontrakter");
+}
+
+export async function signContractAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/kontrakter", () => signContract(db, ctx, str(formData, "contractId"), str(formData, "name")));
+  revalidatePath("/kontrakter");
+}
+
+export async function declineContractAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/kontrakter", () => declineContract(db, ctx, str(formData, "contractId"), opt(formData, "reason")));
+  revalidatePath("/kontrakter");
+}
+
+export async function requireCertificateAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(clubPage(formData, "attester"), () => requireCertificate(db, ctx, str(formData, "clubId"), str(formData, "profileId"), opt(formData, "reason")));
+  revalidatePath("/forening/attester");
+}
+
+export async function certificateStepAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const id = str(formData, "certificateId");
+  const step = str(formData, "step");
+  await attempt(clubPage(formData, "attester"), async () => {
+    if (step === "written") return recordWrittenConsent(db, ctx, id);
+    if (step === "requested") return markCertificateRequested(db, ctx, id);
+    if (step === "approved") return registerCertificateResult(db, ctx, id, { approved: true, issuedOn: opt(formData, "issuedOn"), expiresOn: opt(formData, "expiresOn") });
+    if (step === "not_approved") return registerCertificateResult(db, ctx, id, { approved: false });
+    if (step === "remove") return removeCertificate(db, ctx, id);
+    throw new Error("Ukendt handling.");
+  });
+  revalidatePath("/forening/attester");
+}
+
+export async function giveCertificateConsentAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/vagtplan", () => giveCertificateConsent(db, ctx, str(formData, "certificateId")));
+  revalidatePath("/vagtplan");
 }

@@ -33,6 +33,10 @@ export const KINDS = {
     label: "Udlæg og kørsel",
     description: "Når et udlæg skal godkendes (kassereren og admin), og når dit eget udlæg er godkendt, afvist eller betalt.",
   },
+  volunteer: {
+    label: "Vagter, kontrakter og børneattester",
+    description: "Påmindelse før en vagt du har taget, når en kontrakt venter på din underskrift, og når en børneattest mangler dit samtykke eller snart udløber. Foreningens administratorer får besked om attester, der mangler eller udløber.",
+  },
   event_reminder: {
     label: "Påmindelser om at svare",
     description: "Dagen før svarfristen (eller før aktiviteten), hvis du eller dit barn ikke har meldt til eller fra.",

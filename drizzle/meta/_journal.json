@@ -204,6 +204,13 @@
       "when": 1792747617256,
       "tag": "0028_booking",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792748076325,
+      "tag": "0029_vagtplan_kontrakter_attester",
+      "breakpoints": true
     }
   ]
 }

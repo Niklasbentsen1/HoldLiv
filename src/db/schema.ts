@@ -1101,3 +1101,122 @@ export const bookings = pgTable(
   },
   (t) => [index("bookings_resource_idx").on(t.resourceId, t.startsAt), index("bookings_profile_idx").on(t.profileId)],
 );
+
+// --- Vagtplan, kontrakter og børneattester ---
+
+// Vagter for frivillige (kiosk, opstilling, stævnevagt). Antal pladser og krav bestemmer foreningen selv.
+export const volunteerShifts = pgTable(
+  "volunteer_shifts",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    // Sat, når vagten hører til et bestemt hold (så holdets træner kan oprette den).
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    location: text("location"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    slots: integer("slots").notNull().default(1),
+    // Vagter med børn kræver en gyldig børneattest, før man kan tage dem.
+    requiresChildCertificate: boolean("requires_child_certificate").notNull().default(false),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("volunteer_shifts_club_idx").on(t.clubId, t.startsAt)],
+);
+
+export const shiftSignups = pgTable(
+  "shift_signups",
+  {
+    id: id(),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => volunteerShifts.id, { onDelete: "cascade" }),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    signedUpByUserId: uuid("signed_up_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("shift_signups_unique").on(t.shiftId, t.profileId), index("shift_signups_profile_idx").on(t.profileId)],
+);
+
+export const contractKind = pgEnum("contract_kind", ["coach", "player", "volunteer", "other"]);
+// draft = kladde, sent = sendt til underskrift, signed = underskrevet, declined = afvist af modtageren, cancelled = trukket tilbage af foreningen.
+export const contractStatus = pgEnum("contract_status", ["draft", "sent", "signed", "declined", "cancelled"]);
+
+// Kontrakter mellem foreningen og en person (fx trænerkontrakt). Teksten fastlåses ved afsendelse (hash), og
+// underskriften er en enkel accept med navn, ikke en kvalificeret elektronisk signatur.
+export const contracts = pgTable(
+  "contracts",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    kind: contractKind("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on"),
+    // Aftalt månedligt beløb; bestemmes af foreningen. Null = ingen betaling.
+    monthlyAmountOre: integer("monthly_amount_ore"),
+    status: contractStatus("status").notNull().default("draft"),
+    bodyHash: text("body_hash"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+    expiryNoticeSentAt: timestamp("expiry_notice_sent_at", { withTimezone: true }),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    signedByUserId: uuid("signed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    signedName: text("signed_name"),
+    declinedReason: text("declined_reason"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("contracts_club_idx").on(t.clubId, t.status), index("contracts_profile_idx").on(t.profileId)],
+);
+
+// needed = foreningen har brug for en attest, requested = hentet hos Politiet via foreningens eget login (afventer svar),
+// approved = attesten er set og uden anmærkning, not_approved = attesten kan ikke godkendes.
+export const certificateStatus = pgEnum("certificate_status", ["needed", "requested", "approved", "not_approved"]);
+
+// Sporing af børneattester. Selve attesten og CPR-nummer gemmes aldrig i HoldLiv; kun status, datoer og samtykke.
+export const childCertificates = pgTable(
+  "child_certificates",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    status: certificateStatus("status").notNull().default("needed"),
+    // Hvorfor attesten skal bruges, fx "Træner U9".
+    reason: text("reason"),
+    consentAt: timestamp("consent_at", { withTimezone: true }),
+    consentByUserId: uuid("consent_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    // app = personen (eller værgen) sagde ja i HoldLiv, written = foreningen har et skriftligt samtykke.
+    consentMethod: text("consent_method"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    issuedOn: date("issued_on"),
+    expiresOn: date("expires_on"),
+    registeredByUserId: uuid("registered_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    lastReminderKey: text("last_reminder_key"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("child_certificates_unique").on(t.clubId, t.profileId), index("child_certificates_club_idx").on(t.clubId, t.status)],
+);
