@@ -36,6 +36,7 @@ import {
   askMemberService,
   setAiService,
   runImport,
+  registerClub,
   submitSignup,
   saveSignupSettings,
   decideSignup,
@@ -1634,4 +1635,16 @@ export async function admitTicketAction(formData: FormData) {
   const code = str(formData, "code");
   await attempt(`/billet/${code}`, () => admitTicket(db, ctx, code));
   redirect(`/billet/${code}`);
+}
+
+// --- Selvbetjent oprettelse af forening ---
+
+export async function registerClubAction(formData: FormData) {
+  const { ctx } = await requireSession("/opret-forening");
+  let clubId = "";
+  await attempt("/opret-forening", async () => {
+    if (formData.get("terms") !== "on") throw new Error("Du skal bekræfte, at du må oprette foreningen.");
+    clubId = (await registerClub(db, ctx, { name: str(formData, "name"), slug: opt(formData, "slug") })).id;
+  });
+  redirect(`/forening/kom-i-gang?klub=${clubId}`);
 }
