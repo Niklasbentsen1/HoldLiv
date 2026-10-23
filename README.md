@@ -94,6 +94,8 @@ Medlemstal: Kasse, Medlemstal viser aktive medlemmer pr. aldersgruppe og spiller
 
 Camps: admin/kasserer opretter dem under Kasse, Camps (pris, pladser, søskenderabat og frist bestemmer foreningen selv). Medlemmer og forældre tilmelder på `/camps`; fuldt hold giver venteliste, og hver bekræftet plads får en opkrævning under Betaling.
 
+Booking af baner, haller og udstyr: admin/kasserer opretter ressourcer under Kasse, Booking (type, antal enheder, leje pr. time og om medlemmers bookinger skal godkendes; lejen bestemmer foreningen selv, 0 = gratis). Medlemmer og forældre (for børn) booker på `/booking` og ser, hvem der har booket de næste 14 dage (kun fornavn eller holdnavn). Dobbeltbooking afvises, og udstyr kan bookes, til alle enheder er brugt (ressourcen låses under booking, så to samtidige kan ikke tage den sidste). Koster det noget, får medlemmet en opkrævning (type `booking`) under Betaling, når bookingen er bekræftet. Trænere og admin booker for et hold uden leje. Afbooking af en betalt booking kræver, at kassereren har refunderet først. Kode: `src/services/booking.ts`. `npm run db:seed` giver Skovby IF en bane, en hal med godkendelse og bolde.
+
 ## Design
 
 - **Udtryk:** lyse flader med hvide, meget runde kort og én **signaturfarve** (`--brand`). Det vigtigste på hver skærm (fx næste aktivitet) står i et kort med signaturfarven som gradient. Skrift: Bricolage Grotesque (selvhostet via `@fontsource-variable`). Mørk tilstand følger systemet.

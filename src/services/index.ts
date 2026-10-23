@@ -287,6 +287,7 @@ export * from "./finance";
 export * from "./autocharge";
 export * from "./expenses";
 export * from "./camps";
+export * from "./booking";
 export * from "./memberStats";
 export * from "./memberService";
 export * from "./modules";

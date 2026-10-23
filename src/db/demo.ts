@@ -20,6 +20,8 @@ import {
   createChildProfile,
   createClub,
   createEvent,
+  createBooking,
+  createResource,
   createEventSeries,
   createTeam,
   completeCheckout,
@@ -288,4 +290,18 @@ export async function seedMatchDemo(db: Db, demo: Awaited<ReturnType<typeof seed
       { profileId: noor.id, slot: "bench" },
     ],
   });
+}
+
+/** Booking i demoklubben: en bane, en hal der skal godkendes og udstyr, og et par bookinger. Priserne er kun eksempler; foreningen sætter dem selv. Bruges kun af db:seed. */
+export async function seedBookingDemo(db: Db, demo: Awaited<ReturnType<typeof seedDemo>>, now = new Date()) {
+  const sofie = await loadAccessContext(db, demo.users.sofie.user.id, now);
+  const mette = await loadAccessContext(db, demo.users.mette.user.id, now);
+  const niklas = await loadAccessContext(db, demo.users.niklas.user.id, now);
+  const club = demo.club.id;
+  const bane = await createResource(db, sofie, club, { name: "Kunststofbane", kind: "court", description: "Kunstgræs med lys. Omklædning i klubhuset.", pricePerHourOre: 15000 });
+  await createResource(db, sofie, club, { name: "Skovbyhallen", kind: "hall", description: "Hal til indendørs træning og fester.", pricePerHourOre: 30000, requiresApproval: true });
+  const bolde = await createResource(db, sofie, club, { name: "Bolde", kind: "equipment", quantity: 20, description: "Match-bolde, str. 4 og 5." });
+  await createBooking(db, mette, { resourceId: bane.id, teamId: demo.teams.u9.id, startsAt: dayAt(now, 3, 16), endsAt: dayAt(now, 3, 17, 30) });
+  await createBooking(db, niklas, { resourceId: bane.id, startsAt: dayAt(now, 5, 18), endsAt: dayAt(now, 5, 19) });
+  await createBooking(db, mette, { resourceId: bolde.id, teamId: demo.teams.u9.id, quantity: 8, startsAt: dayAt(now, 3, 16), endsAt: dayAt(now, 3, 17, 30) });
 }

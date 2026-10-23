@@ -8,6 +8,7 @@ import type { Db } from "../db/client";
 import {
   auditLog,
   campSignups,
+  bookings,
   carpoolOffers,
   carpoolPassengers,
   carpoolRequests,
@@ -246,6 +247,7 @@ async function anonymize(tx: Tx, profileIds: string[], now: Date) {
   await tx.delete(guardianships).where(inArray(guardianships.guardianProfileId, profileIds));
   await tx.update(teamTasks).set({ assigneeProfileId: null }).where(inArray(teamTasks.assigneeProfileId, profileIds));
   await tx.delete(campSignups).where(inArray(campSignups.profileId, profileIds));
+  await tx.delete(bookings).where(inArray(bookings.profileId, profileIds));
   // Krav, der ikke blev godkendt, slettes med kvitteringer. Godkendte og betalte gemmes (bogføringsloven) og er uden navn, når profilen anonymiseres.
   await tx.delete(expenseClaims).where(and(inArray(expenseClaims.profileId, profileIds), inArray(expenseClaims.status, ["submitted", "rejected", "cancelled"])));
   // Bødernes tekst kan nævne personen.
