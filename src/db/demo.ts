@@ -2,13 +2,16 @@
 // faste træninger tre uger tilbage og seks uger frem, kampe og svar.
 // Den viser også Niklas' eksempel: én profil med flere roller.
 import type { Db } from "./client";
-import { eventResponses } from "./schema";
+import { eq } from "drizzle-orm";
+import { eventResponses, pollOptions } from "./schema";
 import { addDays, localDate } from "../lib/money";
 import { mockProvider } from "../lib/payments";
 import { loadAccessContext } from "../auth/context";
 import {
   addClubMember,
   addFundEntry,
+  createPoll,
+  vote,
   addMatchEvent,
   recordResult,
   saveLineup,
@@ -362,4 +365,15 @@ export async function seedTeamFundDemo(db: Db, demo: Awaited<ReturnType<typeof s
     await addFundEntry(db, mette, u9, { kind: "deposit", amountOre: 5000, description: "Indbetaling til sæsonafslutning", profileId: kid.id, entryDate: addDays(today, -14) });
   }
   await addFundEntry(db, mette, u9, { kind: "withdrawal", amountOre: 4200, description: "Frugt og vand til stævnet", entryDate: addDays(today, -3) });
+}
+
+/** En åben afstemning på U9 med et par stemmer. */
+export async function seedPollDemo(db: Db, demo: Awaited<ReturnType<typeof seedDemo>>, now = new Date()) {
+  const karen = await loadAccessContext(db, demo.users.karen.user.id, now);
+  const mette = await loadAccessContext(db, demo.users.mette.user.id, now);
+  const u9 = demo.teams.u9.id;
+  await setTeamModule(db, karen, u9, "polls", true);
+  const poll = await createPoll(db, mette, u9, { question: "Hvornår skal vi holde sæsonafslutning?", options: ["Fredag den 5. juni", "Lørdag den 6. juni", "Søndag den 7. juni"] });
+  const [option] = await db.select().from(pollOptions).where(eq(pollOptions.pollId, poll.id)).orderBy(pollOptions.position);
+  await vote(db, await loadAccessContext(db, demo.users.ali.user.id, now), poll.id, [option.id], demo.kids.noor.id);
 }

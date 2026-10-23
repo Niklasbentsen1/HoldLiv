@@ -37,6 +37,10 @@ export const KINDS = {
     label: "Vagter, kontrakter og børneattester",
     description: "Påmindelse før en vagt du har taget, når en kontrakt venter på din underskrift, og når en børneattest mangler dit samtykke eller snart udløber. Foreningens administratorer får besked om attester, der mangler eller udløber.",
   },
+  poll: {
+    label: "Nye afstemninger",
+    description: "Når en træner starter en afstemning på dit hold, og du eller dit barn endnu ikke har stemt.",
+  },
   event_reminder: {
     label: "Påmindelser om at svare",
     description: "Dagen før svarfristen (eller før aktiviteten), hvis du eller dit barn ikke har meldt til eller fra.",

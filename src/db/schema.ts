@@ -1247,3 +1247,60 @@ export const teamFundEntries = pgTable(
   },
   (t) => [index("team_fund_entries_team_idx").on(t.teamId, t.entryDate)],
 );
+
+// --- Afstemninger (modul "polls") ---
+
+// En afstemning på et hold. Trænerne starter den; spillerne (og forældre for børn) stemmer.
+export const polls = pgTable(
+  "polls",
+  {
+    id: id(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    question: text("question").notNull(),
+    description: text("description"),
+    // Flere valgmuligheder må vælges.
+    multiple: boolean("multiple").notNull().default(false),
+    // Anonym: ingen kan se, hvem der har stemt hvad, heller ikke trænerne.
+    anonymous: boolean("anonymous").notNull().default(false),
+    closesAt: timestamp("closes_at", { withTimezone: true }),
+    // Sat, når en træner lukker afstemningen før tid.
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("polls_team_idx").on(t.teamId, t.createdAt)],
+);
+
+export const pollOptions = pgTable(
+  "poll_options",
+  {
+    id: id(),
+    pollId: uuid("poll_id")
+      .notNull()
+      .references(() => polls.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    position: integer("position").notNull(),
+  },
+  (t) => [index("poll_options_poll_idx").on(t.pollId, t.position)],
+);
+
+export const pollVotes = pgTable(
+  "poll_votes",
+  {
+    id: id(),
+    pollId: uuid("poll_id")
+      .notNull()
+      .references(() => polls.id, { onDelete: "cascade" }),
+    optionId: uuid("option_id")
+      .notNull()
+      .references(() => pollOptions.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    votedByUserId: uuid("voted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("poll_votes_unique").on(t.optionId, t.profileId), index("poll_votes_profile_idx").on(t.pollId, t.profileId)],
+);

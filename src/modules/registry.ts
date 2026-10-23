@@ -5,7 +5,7 @@
 // indstillinger, som foreningen selv vælger. HoldLiv fastsætter aldrig beløb: satser og
 // priser i et modul sættes af foreningens egen admin eller træner.
 
-export type ModuleKey = "carpool" | "tasks" | "fines" | "chat" | "matches" | "teamfund";
+export type ModuleKey = "carpool" | "tasks" | "fines" | "chat" | "matches" | "teamfund" | "polls";
 
 export type ConfigField =
   | { key: string; label: string; type: "int"; min: number; max: number; default: number; hint?: string }
@@ -83,6 +83,14 @@ export const MODULES: Registry = {
     name: "Holdkasse",
     description: "Holdets egen kasse: indbetalinger og udgifter, saldo og historik. Beløbene bestemmer holdet selv.",
     path: "holdkasse",
+    fields: [],
+    available: true,
+  },
+  polls: {
+    key: "polls",
+    name: "Afstemninger",
+    description: "Hurtige afstemninger på holdet: dato til sæsonafslutning, trøjefarve eller hvem der vil med til stævne. Én stemme pr. spiller, og forældre stemmer for børn.",
+    path: "afstemninger",
     fields: [],
     available: true,
   },

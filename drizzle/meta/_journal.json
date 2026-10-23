@@ -218,6 +218,13 @@
       "when": 1792749575707,
       "tag": "0030_holdkasse",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792749910817,
+      "tag": "0031_afstemninger",
+      "breakpoints": true
     }
   ]
 }
