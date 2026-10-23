@@ -11,6 +11,9 @@ import {
   addClubMember,
   addFundEntry,
   createScreen,
+  createPost,
+  saveSignupSettings,
+  saveSiteSettings,
   uploadDocument,
   createPoll,
   vote,
@@ -387,4 +390,13 @@ export async function seedArchiveDemo(db: Db, demo: Awaited<ReturnType<typeof se
   await uploadDocument(db, karen, demo.club.id, { audience: "club", title: "Vedtægter for Skovby IF", category: "Vedtægter", fileName: "vedtaegter.pdf", bytes: pdf });
   await uploadDocument(db, karen, demo.club.id, { audience: "board", title: "Referat fra bestyrelsesmødet", category: "Referater", fileName: "referat.pdf", bytes: pdf });
   await createScreen(db, karen, demo.club.id, { name: "Klubhuset", message: "Husk at tage skoene af i hallen" });
+  await saveSiteSettings(db, karen, demo.club.id, {
+    enabled: true,
+    intro: "Skovby IF er en lokal idrætsforening for alle aldre. Vi spiller fodbold og har hold fra U9 til senior.",
+    contact: "Formand Karen Holm, formand@skovby-if.test\nSkovbyhallen, Hallevej 1",
+    showTeams: true,
+    showCalendar: true,
+  });
+  await saveSignupSettings(db, karen, demo.club.id, { enabled: true, minAge: null, maxAge: null, terms: null });
+  await createPost(db, karen, { mail: async () => {}, sms: null, baseUrl: "" }, { kind: "news", scope: `club:${demo.club.id}`, title: "Sæsonstart for alle hold", body: "Vi starter sæsonen i næste uge. Kom og vær med!", publicOnSite: true });
 }

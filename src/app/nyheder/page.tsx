@@ -4,7 +4,7 @@ import { db } from "../../lib/db";
 import { requireSession } from "../../lib/session";
 import { Shell, ErrorBox } from "../../components/Shell";
 import { Avatar, Empty, PageHead } from "../../components/ui";
-import { createPostAction, deletePostAction, pinPostAction } from "../actions";
+import { createPostAction, deletePostAction, pinPostAction, publicPostAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +59,14 @@ export default async function News({ searchParams }: { searchParams: Promise<{ f
                         <button className="button" type="submit">{p.pinned ? "Fjern fastgørelse" : "Fastgør"}</button>
                       </form>
                     )}
+                    {p.canManage && p.kind === "news" && p.scopeKey.startsWith("club:") && (
+                      <form action={publicPostAction}>
+                        <input type="hidden" name="postId" value={p.id} />
+                        <input type="hidden" name="public" value={p.publicOnSite ? "0" : "1"} />
+                        <input type="hidden" name="back" value={back} />
+                        <button className="button" type="submit">{p.publicOnSite ? "Fjern fra hjemmesiden" : "Vis på hjemmesiden"}</button>
+                      </form>
+                    )}
                     <form action={deletePostAction}>
                       <input type="hidden" name="postId" value={p.id} />
                       <input type="hidden" name="back" value={back} />
@@ -92,6 +100,11 @@ export default async function News({ searchParams }: { searchParams: Promise<{ f
                 Tekst
                 <textarea name="body" rows={5} required maxLength={MAX_BODY} />
               </label>
+              {!board && anyLead && (
+                <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="checkbox" name="publicOnSite" style={{ width: "auto" }} /> Vis også på foreningens hjemmeside (kun for hele foreningen)
+                </label>
+              )}
               {board && (
                 <label>
                   Hvor mange dage skal det hænge?

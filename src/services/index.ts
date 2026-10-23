@@ -295,6 +295,7 @@ export * from "./holdkasse";
 export * from "./afstemninger";
 export * from "./arkiv";
 export * from "./skaerm";
+export * from "./hjemmeside";
 export * from "./medlemskort";
 export * from "./memberStats";
 export * from "./memberService";

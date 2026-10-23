@@ -222,3 +222,7 @@ Infoskærm (`/forening/skaerme`): admin opretter en skærm til klubhuset eller h
 Medlemskort (`/medlemskort`): alle aktive medlemmer (og forældre for deres børn) har et digitalt kort pr. forening med en QR-kode. Koden peger på et hemmeligt link, `/tjek/<token>`, uden personoplysninger; den kan nulstilles, og det gamle kort virker så ikke mere. Admin, kasserer og trænere i foreningen kan scanne kortet (login kræves) og ser navn, hold og om medlemskabet er gyldigt (aktivt). Kun admin og kasserer ser, om medlemmet har en forfalden opkrævning; trænere ser intet om betaling. Kode: `src/services/medlemskort.ts`.
 
 Skærpet (arbejdsplan 38, del 6): i en anonym afstemning gemmes stemmen uden profil (hvem der har stemt noteres adskilt), tallene vises først, når afstemningen er lukket, og stemmen kan hverken skiftes eller trækkes tilbage. Kassereren kan under Kontingenter vælge, at medlemskortet er ugyldigt ved en forfalden opkrævning (standard: gyldigt); trænere ser kun "ikke gyldigt".
+
+## Hjemmeside
+
+Foreningens admin tænder en offentlig side på `/klub/<slug>` under Forening, Hjemmeside. Siden kræver ikke login og viser kun det, foreningen selv har valgt: velkomsttekst og kontakt, holdenes navne og sæson, aktiviteter de næste 30 dage (titel, tid, sted, hold), de nyheder ledelsen har markeret "vis på hjemmesiden", og link til online indmeldelse. Aldrig medlemmer, trænere, børn, svar eller betalinger. Eget domæne og skabeloner er ikke bygget endnu.

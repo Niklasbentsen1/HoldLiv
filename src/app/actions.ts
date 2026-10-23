@@ -54,6 +54,8 @@ import {
   deleteMessage,
   deletePost,
   setPostPinned,
+  saveSiteSettings,
+  setPostPublic,
   postMessage,
   removePushSubscription,
   resetFeedToken,
@@ -837,6 +839,25 @@ export const updateScreenAction = async (f: FormData) => screenAction(f, (ctx) =
 export const resetScreenTokenAction = async (f: FormData) => screenAction(f, (ctx) => resetScreenToken(db, ctx, str(f, "screenId")));
 export const deleteScreenAction = async (f: FormData) => screenAction(f, (ctx) => deleteScreen(db, ctx, str(f, "screenId")));
 
+// --- Hjemmeside ---
+
+export async function saveSiteSettingsAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const clubId = str(formData, "clubId");
+  const back = `/forening/hjemmeside?klub=${clubId}`;
+  await attempt(back, () =>
+    saveSiteSettings(db, ctx, clubId, {
+      enabled: formData.get("enabled") === "on",
+      intro: opt(formData, "intro"),
+      contact: opt(formData, "contact"),
+      showTeams: formData.get("showTeams") === "on",
+      showCalendar: formData.get("showCalendar") === "on",
+    }),
+  );
+  revalidatePath(back);
+  redirect(back);
+}
+
 // --- Medlemskort ---
 
 export async function resetCardAction(formData: FormData) {
@@ -1193,9 +1214,17 @@ export async function createPostAction(formData: FormData) {
       title: str(formData, "title"),
       body: String(formData.get("body") ?? ""),
       pinned: formData.get("pinned") === "on",
+      publicOnSite: formData.get("publicOnSite") === "on",
       expiresInDays: kind === "board" && str(formData, "days") ? Number(str(formData, "days")) : null,
     }),
   );
+  redirect(back);
+}
+
+export async function publicPostAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = safeNext(str(formData, "back"));
+  await attempt(back, () => setPostPublic(db, ctx, str(formData, "postId"), str(formData, "public") === "1"));
   redirect(back);
 }
 
