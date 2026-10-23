@@ -2,7 +2,8 @@ import Link from "next/link";
 import { loadActingProfiles } from "../auth/context";
 import { getAttendanceOverview, getEventDetail, listMyTeams, listUpcomingEvents } from "../services";
 import { db } from "../lib/db";
-import { requireSession } from "../lib/session";
+import { redirect } from "next/navigation";
+import { getUserId, requireSession, sessionAwaitsMfa } from "../lib/session";
 import { day, dayHeading, time } from "../lib/format";
 import { TIME_ZONE } from "../lib/time";
 import { Shell } from "../components/Shell";
@@ -32,6 +33,8 @@ function countdown(from: Date, to: Date) {
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ fejl?: string }> }) {
   const { fejl } = await searchParams;
+  // Kun helt udloggede besøgende sendes til salgssiden; en bruger midt i et to-faktor-login skal videre til koden.
+  if (!(await getUserId()) && !(await sessionAwaitsMfa())) redirect("/for-foreninger");
   const { ctx, actingProfileId } = await requireSession();
   const acting = await loadActingProfiles(db, ctx);
   const me = acting.find((p) => p.isSelf)!;
