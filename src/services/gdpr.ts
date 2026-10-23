@@ -3,7 +3,7 @@
 // Sletning anonymiserer personen i stedet for at fjerne profilrækken: opkrævninger og betalinger skal gemmes
 // efter bogføringsloven, og de hænger på profilen. Alt der identificerer personen fjernes (navn, kontaktoplysninger,
 // fødselsdato, login, beskeder, opslag, svar, tilmeldinger). Slettede personer vises som "Slettet medlem".
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import {
   auditLog,
@@ -23,6 +23,8 @@ import {
   fines,
   guardianships,
   loginTokens,
+  matchEvents,
+  matchPlayers,
   notificationPrefs,
   payments,
   posts,
@@ -96,7 +98,7 @@ async function exportProfile(db: Db, profileId: string) {
     .select({ firstName: profiles.firstName, lastName: profiles.lastName, birthDate: profiles.birthDate, email: profiles.email, phone: profiles.phone, createdAt: profiles.createdAt })
     .from(profiles)
     .where(eq(profiles.id, profileId));
-  const [memberships, roles, teamRows, responses, myCharges, offers, rides, requests, tasks, myFines, written, myPosts, myConsents, guardians] = await Promise.all([
+  const [memberships, roles, teamRows, responses, myCharges, offers, rides, requests, tasks, myFines, matchLineups, matchEventRows, written, myPosts, myConsents, guardians] = await Promise.all([
     db
       .select({ club: clubs.name, status: clubMemberships.status, joinedAt: clubMemberships.joinedAt, leftAt: clubMemberships.leftAt, exempt: clubMemberships.exempt })
       .from(clubMemberships)
@@ -118,6 +120,16 @@ async function exportProfile(db: Db, profileId: string) {
     db.select({ eventId: carpoolRequests.eventId, note: carpoolRequests.note, at: carpoolRequests.createdAt }).from(carpoolRequests).where(eq(carpoolRequests.profileId, profileId)),
     db.select({ title: teamTasks.title, kind: teamTasks.kind, assignedAt: teamTasks.assignedAt, doneAt: teamTasks.doneAt }).from(teamTasks).where(eq(teamTasks.assigneeProfileId, profileId)),
     db.select({ description: fines.description, amountOre: fines.amountOre, createdAt: fines.createdAt, paidAt: fines.paidAt }).from(fines).where(eq(fines.profileId, profileId)),
+    db
+      .select({ match: events.title, startsAt: events.startsAt, slot: matchPlayers.slot, position: matchPlayers.position, minutes: matchPlayers.minutes })
+      .from(matchPlayers)
+      .innerJoin(events, eq(events.id, matchPlayers.eventId))
+      .where(eq(matchPlayers.profileId, profileId)),
+    db
+      .select({ match: events.title, kind: matchEvents.kind, minute: matchEvents.minute, asAssist: sql<boolean>`${matchEvents.assistProfileId} = ${profileId}` })
+      .from(matchEvents)
+      .innerJoin(events, eq(events.id, matchEvents.eventId))
+      .where(or(eq(matchEvents.profileId, profileId), eq(matchEvents.assistProfileId, profileId))),
     db.select({ body: chatMessages.body, at: chatMessages.createdAt, deleted: chatMessages.deletedAt }).from(chatMessages).where(eq(chatMessages.authorProfileId, profileId)),
     db.select({ kind: posts.kind, title: posts.title, body: posts.body, at: posts.createdAt }).from(posts).where(and(eq(posts.authorProfileId, profileId), isNull(posts.deletedAt))),
     db.select({ kind: consents.kind, version: consents.version, givenAt: consents.givenAt, withdrawnAt: consents.withdrawnAt }).from(consents).where(eq(consents.profileId, profileId)),
@@ -144,6 +156,7 @@ async function exportProfile(db: Db, profileId: string) {
     carpool: { offers, passenger: rides, requests },
     tasks,
     fines: myFines,
+    matches: { lineups: matchLineups, events: matchEventRows },
     chatMessages: written,
     posts: myPosts,
     consents: myConsents,
@@ -236,6 +249,11 @@ async function anonymize(tx: Tx, profileIds: string[], now: Date) {
   // Krav, der ikke blev godkendt, slettes med kvitteringer. Godkendte og betalte gemmes (bogføringsloven) og er uden navn, når profilen anonymiseres.
   await tx.delete(expenseClaims).where(and(inArray(expenseClaims.profileId, profileIds), inArray(expenseClaims.status, ["submitted", "rejected", "cancelled"])));
   // Bødernes tekst kan nævne personen.
+  // Kampe: opstilling og kort slettes. Mål bliver stående i resultatet som mål uden navn.
+  await tx.delete(matchPlayers).where(inArray(matchPlayers.profileId, profileIds));
+  await tx.delete(matchEvents).where(and(inArray(matchEvents.profileId, profileIds), inArray(matchEvents.kind, ["yellow", "red"])));
+  await tx.update(matchEvents).set({ profileId: null }).where(inArray(matchEvents.profileId, profileIds));
+  await tx.update(matchEvents).set({ assistProfileId: null }).where(inArray(matchEvents.assistProfileId, profileIds));
   await tx.update(fines).set({ description: "Slettet" }).where(inArray(fines.profileId, profileIds));
   await tx
     .update(profiles)

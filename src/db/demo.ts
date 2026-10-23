@@ -8,6 +8,13 @@ import { mockProvider } from "../lib/payments";
 import { loadAccessContext } from "../auth/context";
 import {
   addClubMember,
+  addMatchEvent,
+  recordResult,
+  saveLineup,
+  saveReport,
+  setLineupPublished,
+  setTeamModule,
+  updateModuleConfig,
   addGuardian,
   addTeamMember,
   createChildProfile,
@@ -238,4 +245,47 @@ export async function seedDemo(db: Db, now = new Date()) {
     fees: { kids: kidsFee, senior: seniorFee, passive: passiveFee },
     events: { u9Training: upcoming(u9.id), u9Match, u9PastMatch, seniorTraining: upcoming(senior.id) },
   };
+}
+
+/** Kampe og opstilling i demoklubben: U9 har modulet slået til, en spillet kamp med referat og en kommende med opstilling. Bruges kun af db:seed. */
+export async function seedMatchDemo(db: Db, demo: Awaited<ReturnType<typeof seedDemo>>, now = new Date()) {
+  const karen = await loadAccessContext(db, demo.users.karen.user.id, now);
+  const mette = await loadAccessContext(db, demo.users.mette.user.id, now);
+  const u9 = demo.teams.u9.id;
+  await setTeamModule(db, karen, u9, "matches", true);
+  await updateModuleConfig(db, mette, u9, "matches", { startersCount: "4" });
+  const { emma, ida, noor, freja, alma } = demo.kids;
+  const past = demo.events.u9PastMatch.id;
+  await saveLineup(db, mette, past, {
+    opponent: "Gjern IF",
+    formation: "1-2-1",
+    entries: [
+      { profileId: alma.id, slot: "start", position: "Målmand" },
+      { profileId: ida.id, slot: "start", position: "Forsvar" },
+      { profileId: noor.id, slot: "start", position: "Midtbane" },
+      { profileId: emma.id, slot: "start", position: "Angreb" },
+      { profileId: freja.id, slot: "bench" },
+    ],
+  });
+  await setLineupPublished(db, mette, past, true);
+  const after = { ...mette, now };
+  await recordResult(db, after, past, { goalsFor: 4, goalsAgainst: 2, minutes: { [alma.id]: 40, [ida.id]: 40, [noor.id]: 35, [emma.id]: 30, [freja.id]: 25 } });
+  await addMatchEvent(db, after, past, { kind: "goal", profileId: emma.id, assistProfileId: noor.id, minute: 6 });
+  await addMatchEvent(db, after, past, { kind: "goal", profileId: emma.id, minute: 14 });
+  await addMatchEvent(db, after, past, { kind: "goal", profileId: freja.id, assistProfileId: emma.id, minute: 31 });
+  await addMatchEvent(db, after, past, { kind: "goal", profileId: noor.id, minute: 38 });
+  await saveReport(db, mette, past, {
+    text: "Flot sejr på hjemmebane. Vi kom hurtigt foran, og Alma i målet reddede flere store chancer. Freja scorede sit første mål for klubben, da hun kom ind. Næste gang øver vi at holde pladsen, når bolden er tabt.",
+    publish: true,
+  });
+  await saveLineup(db, mette, demo.events.u9Match.id, {
+    opponent: "Ry IF",
+    entries: [
+      { profileId: alma.id, slot: "start", position: "Målmand" },
+      { profileId: freja.id, slot: "start" },
+      { profileId: ida.id, slot: "start" },
+      { profileId: emma.id, slot: "start" },
+      { profileId: noor.id, slot: "bench" },
+    ],
+  });
 }

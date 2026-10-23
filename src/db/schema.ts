@@ -590,6 +590,77 @@ export const fines = pgTable(
   (t) => [index("fines_team_profile_idx").on(t.teamId, t.profileId)],
 );
 
+// --- Kampe: opstilling, referat og statistik (modul "matches") ---
+
+export const lineupSlot = pgEnum("lineup_slot", ["start", "bench"]);
+export const matchEventKind = pgEnum("match_event_kind", ["goal", "yellow", "red"]);
+
+// Trænerens kampark til en kamp (en aktivitet af typen kamp): modstander, opstilling, resultat og referat.
+// Opstillingen og referatet er kladder for trænerne, til de udgives til holdet.
+export const matchSheets = pgTable(
+  "match_sheets",
+  {
+    id: id(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    opponent: text("opponent"),
+    // Fri tekst, fx "3-2-1". HoldLiv vælger ikke taktikken.
+    formation: text("formation"),
+    lineupPublishedAt: timestamp("lineup_published_at", { withTimezone: true }),
+    goalsFor: integer("goals_for"),
+    goalsAgainst: integer("goals_against"),
+    // Sat, når resultatet er indtastet. Kun spillede kampe tæller i statistikken.
+    playedAt: timestamp("played_at", { withTimezone: true }),
+    report: text("report"),
+    reportPublishedAt: timestamp("report_published_at", { withTimezone: true }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("match_sheets_event_unique").on(t.eventId), index("match_sheets_team_idx").on(t.teamId)],
+);
+
+// Hvem der er med i en kamp: på banen fra start eller på bænken. Spillere uden række er ikke udtaget.
+export const matchPlayers = pgTable(
+  "match_players",
+  {
+    id: id(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    slot: lineupSlot("slot").notNull(),
+    // Fri tekst, fx "Forsvar" eller "Målmand".
+    position: text("position"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    minutes: integer("minutes"),
+  },
+  (t) => [uniqueIndex("match_players_unique").on(t.eventId, t.profileId), index("match_players_profile_idx").on(t.profileId)],
+);
+
+// Mål og kort. Et mål uden spiller er et mål, trænerne ikke ved hvem scorede.
+export const matchEvents = pgTable(
+  "match_events",
+  {
+    id: id(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    kind: matchEventKind("kind").notNull(),
+    profileId: uuid("profile_id").references(() => profiles.id, { onDelete: "set null" }),
+    assistProfileId: uuid("assist_profile_id").references(() => profiles.id, { onDelete: "set null" }),
+    minute: integer("minute"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("match_events_event_idx").on(t.eventId)],
+);
+
 // --- Beskeder: mail, SMS og (senere) push ---
 
 // Hvilke beskeder et login vil have på hvilken kanal. Uden række gælder standarden i src/lib/notify.ts.

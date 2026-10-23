@@ -166,7 +166,7 @@ Påmindelser om ubesvarede aktiviteter sendes et døgn før svarfristen (eller f
 
 ## Moduler pr. hold
 
-Hvert hold har sine egne moduler (samkørsel, frugt og opgaver, bødekasse). Beskrivelsen ligger i `src/modules/registry.ts`, tilstanden i `team_modules`, og motoren i `src/services/modules.ts`.
+Hvert hold har sine egne moduler (samkørsel, frugt og opgaver, bødekasse, kampe og opstilling). Beskrivelsen ligger i `src/modules/registry.ts`, tilstanden i `team_modules`, og motoren i `src/services/modules.ts`.
 
 - **Foreningens admin** slår moduler til og fra pr. hold (eller for flere hold ad gangen) under Forening. **Trænere** stiller modulets indstillinger på holdets side under Moduler.
 - Et slukket modul er helt lukket: modulets funktioner kalder `requireModule()` først. Indstillinger og data bevares, hvis modulet slås fra og til igen.
@@ -185,6 +185,10 @@ Frugtliste til kampe og træninger og opgaver som kridtning og oprydning. En opg
 ### Modul: bødekasse
 
 Holdets egen bødekasse. Satserne og beløbene bestemmer holdet selv (trænere og admin); HoldLiv har ingen standardsatser. Aldersgrænsen er en indstilling pr. hold (standard 12 år, kan sættes fra 6 til 18) og tjekkes, når bøden gives: spillere under grænsen eller uden kendt fødselsdato kan ikke få bøder. Gamle bøder beholder beskrivelse og beløb, hvis satsen senere ændres. Kun trænere og admin giver bøder, sætter dem som betalt og trækker dem tilbage; betalingen sker uden for HoldLiv (kontant eller MobilePay til holdkassen). Spilleren og forældrene ser egne bøder; resten af holdet ser kun, hvor meget der er i kassen. Kode: `src/services/fines.ts`, side: `/hold/[id]/bodekasse`.
+
+### Modul: kampe og opstilling
+
+Trænerens kampark til aktiviteter af typen kamp: modstander, opstilling (på banen og bænken, position, fri tekst til formation), resultat med spilletid, mål med assist, gule og røde kort, og et kampreferat. Opstilling og referat er kladder, til trænerne udgiver dem; opstillingen sendes da som besked. Alle på holdet ser resultat, mål og udgivet referat; kort ser kun trænerne og spillerens egen familie. Statistikken tæller kun spillede kampe (resultat indtastet): holdets sejre, uafgjorte, nederlag og mål, og pr. spiller kampe, starter, spilletid, mål, assists og kort. Indstillinger pr. hold: antal spillere på banen (3-11, standard 7) og om hele holdet ser en topscorerliste (standard slået fra, så børn ikke rangeres; spillere og forældre ser kun egne tal, trænerne ser alle). Ved sletning af en profil fjernes opstilling og kort, og mål bliver stående som mål uden navn. Kode: `src/services/matches.ts`, sider: `/hold/[id]/kampe` og `/hold/[id]/kampe/[eventId]`. `npm run db:seed` giver U9 en spillet kamp med referat og en kommende med opstilling.
 
 ### Sikkerhed
 

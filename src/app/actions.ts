@@ -10,6 +10,16 @@ import { LoginError, requestLogin, sha256, verifyCode } from "../auth/login";
 import { beginTotpSetup, completeMfa, confirmTotpSetup, disableTotp, MfaError, regenerateRecoveryCodes } from "../auth/mfa";
 import {
   addCoachByEmail,
+  addMatchEvent,
+  clearResult,
+  recordResult,
+  removeMatchEvent,
+  saveLineup,
+  saveReport,
+  setLineupPublished,
+  unpublishReport,
+  type LineupEntry,
+  type MatchEventKind,
   addGuardianByEmail,
   createChildProfile,
   createEvent,
@@ -668,6 +678,53 @@ export const giveFineAction = async (f: FormData) =>
   });
 export const payFineAction = async (f: FormData) => finesAction(f, (ctx) => setFinePaid(db, ctx, str(f, "fineId"), str(f, "paid") === "1"));
 export const cancelFineAction = async (f: FormData) => finesAction(f, (ctx) => cancelFine(db, ctx, str(f, "fineId")));
+
+// --- Kampe: opstilling, resultat, referat ---
+
+async function matchAction(formData: FormData, fn: (ctx: Awaited<ReturnType<typeof requireSession>>["ctx"]) => Promise<unknown>) {
+  const { ctx } = await requireSession();
+  const back = `/hold/${str(formData, "teamId")}/kampe/${str(formData, "eventId")}`;
+  await attempt(back, () => fn(ctx));
+  revalidatePath(back);
+  redirect(back);
+}
+
+export const saveLineupAction = async (f: FormData) =>
+  matchAction(f, (ctx) => {
+    const entries: LineupEntry[] = [];
+    for (const profileId of f.getAll("profileId").map(String)) {
+      const slot = str(f, `slot_${profileId}`);
+      if (slot === "start" || slot === "bench") entries.push({ profileId, slot, position: opt(f, `pos_${profileId}`) });
+    }
+    // Spillerne på banen står først, så rækkefølgen på siden følger opstillingen.
+    entries.sort((a, b) => Number(b.slot === "start") - Number(a.slot === "start"));
+    return saveLineup(db, ctx, str(f, "eventId"), { entries, opponent: str(f, "opponent"), formation: str(f, "formation") });
+  });
+export const publishLineupAction = async (f: FormData) =>
+  matchAction(f, async (ctx) => setLineupPublished(db, ctx, str(f, "eventId"), str(f, "published") === "1", await deliverFromEnv()));
+export const recordResultAction = async (f: FormData) =>
+  matchAction(f, (ctx) => {
+    const minutes: Record<string, number | null> = {};
+    for (const profileId of f.getAll("profileId").map(String)) {
+      const m = str(f, `min_${profileId}`);
+      minutes[profileId] = m === "" ? null : Number(m);
+    }
+    return recordResult(db, ctx, str(f, "eventId"), { goalsFor: str(f, "goalsFor") === "" ? NaN : Number(str(f, "goalsFor")), goalsAgainst: str(f, "goalsAgainst") === "" ? NaN : Number(str(f, "goalsAgainst")), minutes });
+  });
+export const clearResultAction = async (f: FormData) => matchAction(f, (ctx) => clearResult(db, ctx, str(f, "eventId")));
+export const addMatchEventAction = async (f: FormData) =>
+  matchAction(f, (ctx) =>
+    addMatchEvent(db, ctx, str(f, "eventId"), {
+      kind: str(f, "kind") as MatchEventKind,
+      profileId: opt(f, "playerId"),
+      assistProfileId: opt(f, "assistId"),
+      minute: opt(f, "minute") === null ? null : Number(str(f, "minute")),
+    }),
+  );
+export const removeMatchEventAction = async (f: FormData) => matchAction(f, (ctx) => removeMatchEvent(db, ctx, str(f, "matchEventId")));
+export const saveReportAction = async (f: FormData) =>
+  matchAction(f, (ctx) => saveReport(db, ctx, str(f, "eventId"), { text: String(f.get("report") ?? ""), publish: str(f, "publish") === "1" }));
+export const unpublishReportAction = async (f: FormData) => matchAction(f, (ctx) => unpublishReport(db, ctx, str(f, "eventId")));
 
 // --- Kalender ---
 
