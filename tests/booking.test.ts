@@ -106,7 +106,7 @@ describe("booking og dobbeltbooking", () => {
     const r = await res({ name: "Bane D" });
     const outsider = await registerUser(db, "out@book.test", { firstName: "Ude", lastName: "Fra", birthDate: "1980-01-01" });
     const octx = await ctxOf(outsider.user.id);
-    await expect(createBooking(db, octx, { resourceId: r.id, startsAt: at("13", 10), endsAt: at("13", 11) })).rejects.toThrow("medlemmer");
+    await expect(createBooking(db, octx, { resourceId: r.id, startsAt: at("13", 10), endsAt: at("13", 11) })).rejects.toThrow("aktive medlemmer");
     const a = await member("o1@book.test", "Ole");
     const b = await member("o2@book.test", "Ova");
     await expect(createBooking(db, a.ctx, { resourceId: r.id, profileId: b.profile.id, startsAt: at("13", 10), endsAt: at("13", 11) })).rejects.toThrow();
@@ -205,6 +205,50 @@ describe("godkendelse", () => {
     await rejectBooking(db, admin, out.id, deliver);
     expect((await createBooking(db, a.ctx, { resourceId: r.id, startsAt: at("23", 10), endsAt: at("23", 11) })).status).toBe("pending");
     expect((await createBooking(db, admin, { resourceId: r.id, startsAt: at("24", 10), endsAt: at("24", 11) })).status).toBe("confirmed");
+  });
+});
+
+describe("rettelser efter QA", () => {
+  it("lejen låses ved booking: en prisændring, mens den afventer, ændrer ikke opkrævningen", async () => {
+    const r = await res({ name: "Hal pris", kind: "hall", pricePerHourOre: 10_000, requiresApproval: true });
+    const a = await member("q1@book.test", "Quinn");
+    const out = await createBooking(db, a.ctx, { resourceId: r.id, startsAt: at("21", 10), endsAt: at("21", 11) });
+    await updateResource(db, admin, r.id, { name: "Hal pris", kind: "hall", pricePerHourOre: 50_000, requiresApproval: true });
+    await approveBooking(db, admin, out.id);
+    const [ch] = await db.select().from(charges).where(eq(charges.profileId, a.profile.id));
+    expect(ch.amountOre).toBe(10_000);
+    expect(ch.description).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it("ventelistede og inaktive medlemmer kan ikke booke", async () => {
+    const r = await res({ name: "Bane status" });
+    for (const status of ["waitlist", "inactive"] as const) {
+      const m = await member(`${status}@book.test`, status);
+      await db.update(clubMemberships).set({ status }).where(eq(clubMemberships.profileId, m.profile.id));
+      await expect(createBooking(db, m.ctx, { resourceId: r.id, startsAt: at("09", 10), endsAt: at("09", 11) })).rejects.toThrow("aktive medlemmer");
+      expect(await listBookableResources(db, m.ctx)).toEqual([]);
+    }
+  });
+
+  it("antal kan ikke sættes under en kommende booking", async () => {
+    const r = await res({ name: "Kegler", kind: "equipment", quantity: 10 });
+    const a = await member("k1@book.test", "Kim");
+    await createBooking(db, a.ctx, { resourceId: r.id, startsAt: at("08", 10), endsAt: at("08", 11), quantity: 6 });
+    await expect(updateResource(db, admin, r.id, { name: "Kegler", kind: "equipment", quantity: 5 })).rejects.toThrow("mindst 6");
+    await updateResource(db, admin, r.id, { name: "Kegler", kind: "equipment", quantity: 6 });
+  });
+
+  it("sletning af trænerens konto beholder holdets bookinger", async () => {
+    const r = await res({ name: "Bane slet" });
+    const c = await member("slet@book.test", "Slet");
+    await addTeamMember(db, admin, teamId, c.profile.id, "coach");
+    const cctx = await ctxOf(c.user.id);
+    const team = await createBooking(db, cctx, { resourceId: r.id, teamId, startsAt: at("07", 10), endsAt: at("07", 11) });
+    await createBooking(db, cctx, { resourceId: r.id, startsAt: at("07", 12), endsAt: at("07", 13) });
+    const { deleteMyAccount } = await import("../src/services");
+    await deleteMyAccount(db, cctx, "slet@book.test");
+    const left = await db.select().from(bookings).where(eq(bookings.resourceId, r.id));
+    expect(left.map((b) => b.id)).toEqual([team.id]);
   });
 });
 

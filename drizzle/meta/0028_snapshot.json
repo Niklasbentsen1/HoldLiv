@@ -1,5 +1,5 @@
 {
-  "id": "92292d07-ea6b-4929-8794-43ec5fb48eba",
+  "id": "eafda399-1742-456e-9b4b-447e62d7cc48",
   "prevId": "483fb1df-34ab-4850-afb2-8843321a2555",
   "version": "7",
   "dialect": "postgresql",
@@ -311,6 +311,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "price_ore": {
+          "name": "price_ore",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "status": {
           "name": "status",

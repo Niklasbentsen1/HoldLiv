@@ -25,6 +25,7 @@ CREATE TABLE "bookings" (
 	"ends_at" timestamp with time zone NOT NULL,
 	"quantity" integer DEFAULT 1 NOT NULL,
 	"note" text,
+	"price_ore" integer DEFAULT 0 NOT NULL,
 	"status" "booking_status" NOT NULL,
 	"charge_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -40,7 +41,7 @@ ALTER TABLE "bookings" ADD CONSTRAINT "bookings_booked_by_user_id_users_id_fk" F
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_charge_id_charges_id_fk" FOREIGN KEY ("charge_id") REFERENCES "public"."charges"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "booking_resources_club_idx" ON "booking_resources" USING btree ("club_id");--> statement-breakpoint
 CREATE INDEX "bookings_resource_idx" ON "bookings" USING btree ("resource_id","starts_at");--> statement-breakpoint
-CREATE INDEX "bookings_profile_idx" ON "bookings" USING btree ("profile_id");--> statement-breakpoint
+CREATE INDEX "bookings_profile_idx" ON "bookings" USING btree ("profile_id");
 ALTER TABLE booking_resources ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY club_isolation ON booking_resources TO holdliv_app USING (club_id = ANY (((SELECT app_visible_clubs()))::uuid[])) WITH CHECK (club_id = ANY (((SELECT app_visible_clubs()))::uuid[]));--> statement-breakpoint
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;--> statement-breakpoint

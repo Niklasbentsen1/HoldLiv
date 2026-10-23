@@ -12,7 +12,7 @@ import { and, asc, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { bookingResources, bookings, charges, clubMemberships, profiles, teams } from "../db/schema";
 import { assertCan, canActAs, type AccessContext } from "../auth/permissions";
-import { addDays, localDate } from "../lib/money";
+import { addDays, localDate, longDate } from "../lib/money";
 import { logAudit } from "./audit";
 import { notifyUsers, recipientsOfPlayers, type Deliver } from "./notifications";
 
@@ -69,7 +69,13 @@ export async function updateResource(db: Db, ctx: AccessContext, resourceId: str
   const r = await loadResource(db, resourceId);
   assertCan(ctx, { action: "finance.manage", clubId: r.clubId });
   if (r.archivedAt) throw new Error("Ressourcen er arkiveret.");
-  await db.update(bookingResources).set(cleanResource(input)).where(eq(bookingResources.id, resourceId));
+  const clean = cleanResource(input);
+  const [most] = await db
+    .select({ n: sql<number>`coalesce(max(${bookings.quantity}), 0)::int` })
+    .from(bookings)
+    .where(and(eq(bookings.resourceId, resourceId), inArray(bookings.status, ["pending", "confirmed"]), gt(bookings.endsAt, ctx.now)));
+  if (clean.quantity < most.n) throw new Error(`Der er allerede en kommende booking på ${most.n} stk. Afbook den først, eller behold mindst ${most.n}.`);
+  await db.update(bookingResources).set(clean).where(eq(bookingResources.id, resourceId));
   await logAudit(db, { action: "booking.resource_updated", clubId: r.clubId, actorUserId: ctx.userId, targetType: "booking_resource", targetId: resourceId });
 }
 
@@ -106,7 +112,7 @@ async function usedUnits(db: Pick<Db, "select">, resourceId: string, startsAt: D
 
 async function createBookingCharge(tx: Tx, b: typeof bookings.$inferSelect, r: typeof bookingResources.$inferSelect, userId: string | null, now: Date) {
   if (b.teamId) return null;
-  const amountOre = bookingPrice(r.pricePerHourOre, b.quantity, b.startsAt, b.endsAt);
+  const amountOre = b.priceOre;
   if (amountOre === 0) return null;
   const today = localDate(now);
   const day = localDate(b.startsAt);
@@ -116,7 +122,7 @@ async function createBookingCharge(tx: Tx, b: typeof bookings.$inferSelect, r: t
     .values({
       clubId: b.clubId,
       profileId: b.profileId,
-      description: `Leje: ${r.name}${b.quantity > 1 ? ` (${b.quantity} stk.)` : ""}, ${day}`,
+      description: `Leje: ${r.name}${b.quantity > 1 ? ` (${b.quantity} stk.)` : ""}, ${longDate(day)}`,
       amountOre,
       periodStart: day,
       periodEnd: day,
@@ -169,8 +175,8 @@ export async function createBooking(db: Db, ctx: AccessContext, input: BookingIn
     const [m] = await db
       .select({ p: clubMemberships.profileId })
       .from(clubMemberships)
-      .where(and(eq(clubMemberships.clubId, resource0.clubId), eq(clubMemberships.profileId, profileId)));
-    if (!m) throw new Error("Kun medlemmer af foreningen kan booke.");
+      .where(and(eq(clubMemberships.clubId, resource0.clubId), eq(clubMemberships.profileId, profileId), eq(clubMemberships.status, "active")));
+    if (!m) throw new Error("Kun aktive medlemmer af foreningen kan booke.");
     const manager = ctx.adminClubs.has(resource0.clubId) || ctx.treasurerClubs.has(resource0.clubId);
     status = resource0.requiresApproval && !manager ? "pending" : "confirmed";
   }
@@ -185,7 +191,7 @@ export async function createBooking(db: Db, ctx: AccessContext, input: BookingIn
     }
     const [b] = await tx
       .insert(bookings)
-      .values({ resourceId: resource.id, clubId: resource.clubId, profileId, teamId, bookedByUserId: ctx.userId, startsAt, endsAt, quantity, note: input.note?.trim() || null, status })
+      .values({ resourceId: resource.id, clubId: resource.clubId, profileId, teamId, bookedByUserId: ctx.userId, startsAt, endsAt, quantity, note: input.note?.trim() || null, status, priceOre: teamId ? 0 : bookingPrice(resource.pricePerHourOre, quantity, startsAt, endsAt) })
       .returning();
     const charge = status === "confirmed" ? await createBookingCharge(tx, b, resource, ctx.userId, ctx.now) : null;
     return { booking: b, amountOre: charge?.amountOre ?? 0 };
@@ -222,7 +228,8 @@ export async function rejectBooking(db: Db, ctx: AccessContext, bookingId: strin
   const b = await loadBooking(db, bookingId);
   assertCan(ctx, { action: "finance.manage", clubId: b.clubId });
   if (b.status !== "pending") throw new Error("Bookingen afventer ikke godkendelse.");
-  await db.update(bookings).set({ status: "rejected", cancelledAt: ctx.now }).where(eq(bookings.id, bookingId));
+  const done = await db.update(bookings).set({ status: "rejected", cancelledAt: ctx.now }).where(and(eq(bookings.id, bookingId), eq(bookings.status, "pending"))).returning({ id: bookings.id });
+  if (done.length === 0) throw new Error("Bookingen afventer ikke godkendelse.");
   await logAudit(db, { action: "booking.rejected", clubId: b.clubId, actorUserId: ctx.userId, targetType: "booking", targetId: bookingId });
   await notifyBooker(db, deliver, b, ctx.now, "afvist", "");
 }
@@ -253,7 +260,11 @@ export async function cancelBooking(db: Db, ctx: AccessContext, bookingId: strin
     if (c?.status === "paid") throw new Error("Lejen er betalt. Kassereren skal refundere beløbet, før du kan afbooke.");
   }
   await db.transaction(async (tx) => {
-    await tx.update(bookings).set({ status: "cancelled", cancelledAt: ctx.now }).where(eq(bookings.id, bookingId));
+    const done = await tx.update(bookings).set({ status: "cancelled", cancelledAt: ctx.now }).where(and(eq(bookings.id, bookingId), inArray(bookings.status, ["pending", "confirmed"]))).returning({ id: bookings.id });
+    if (done.length === 0) throw new Error("Bookingen er allerede annulleret.");
+    // Opkrævningen kan være oprettet af en godkendelse, mens vi afbookede.
+    const [fresh] = await tx.select({ chargeId: bookings.chargeId }).from(bookings).where(eq(bookings.id, bookingId));
+    if (fresh.chargeId && fresh.chargeId !== b.chargeId) await tx.update(charges).set({ status: "cancelled" }).where(and(eq(charges.id, fresh.chargeId), eq(charges.status, "open")));
     if (b.chargeId) await tx.update(charges).set({ status: "cancelled" }).where(and(eq(charges.id, b.chargeId), eq(charges.status, "open")));
   });
   await logAudit(db, { action: "booking.cancelled", clubId: b.clubId, actorUserId: ctx.userId, targetType: "booking", targetId: bookingId });
@@ -298,7 +309,7 @@ export async function listClubBookings(db: Db, ctx: AccessContext, clubId: strin
  */
 export async function listBookableResources(db: Db, ctx: AccessContext) {
   const people = [ctx.profileId, ...ctx.wards];
-  const memberships = await db.select({ clubId: clubMemberships.clubId, profileId: clubMemberships.profileId }).from(clubMemberships).where(inArray(clubMemberships.profileId, people));
+  const memberships = await db.select({ clubId: clubMemberships.clubId, profileId: clubMemberships.profileId }).from(clubMemberships).where(and(inArray(clubMemberships.profileId, people), eq(clubMemberships.status, "active")));
   const clubIds = [...new Set(memberships.map((m) => m.clubId))];
   if (clubIds.length === 0) return [];
   const resources = await db

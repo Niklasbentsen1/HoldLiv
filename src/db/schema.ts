@@ -1092,6 +1092,8 @@ export const bookings = pgTable(
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     quantity: integer("quantity").notNull().default(1),
     note: text("note"),
+    // Lejen fastlåses, når bookingen oprettes, så en senere prisændring ikke rammer en afventende booking.
+    priceOre: integer("price_ore").notNull().default(0),
     status: bookingStatus("status").notNull(),
     chargeId: uuid("charge_id").references(() => charges.id, { onDelete: "set null" }),
     createdAt: createdAt(),
