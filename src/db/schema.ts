@@ -1403,3 +1403,88 @@ export const memberCards = pgTable(
   },
   (t) => [uniqueIndex("member_cards_unique").on(t.clubId, t.profileId)],
 );
+
+// --- Billetsalg ---
+
+export const ticketOrderStatus = pgEnum("ticket_order_status", ["pending", "paid", "cancelled", "refunded"]);
+
+// Et arrangement med billetsalg (fx en hjemmekamp eller en fest). Prisen sætter foreningen selv.
+export const ticketEvents = pgTable(
+  "ticket_events",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    // Valgfrit: den kamp eller aktivitet i kalenderen, billetterne hører til.
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    location: text("location"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    priceOre: integer("price_ore").notNull(),
+    // Null = ubegrænset antal.
+    capacity: integer("capacity"),
+    // Null = salget lukker, når arrangementet starter.
+    saleClosesAt: timestamp("sale_closes_at", { withTimezone: true }),
+    maxPerOrder: integer("max_per_order").notNull().default(10),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("ticket_events_club_idx").on(t.clubId, t.startsAt)],
+);
+
+// En bestilling fra en køber uden login. En ikke betalt bestilling holder pladserne, til expiresAt.
+export const ticketOrders = pgTable(
+  "ticket_orders",
+  {
+    id: id(),
+    ticketEventId: uuid("ticket_event_id")
+      .notNull()
+      .references(() => ticketEvents.id, { onDelete: "cascade" }),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    buyerName: text("buyer_name").notNull(),
+    buyerEmail: text("buyer_email").notNull(),
+    quantity: integer("quantity").notNull(),
+    // Prisen på bestillingstidspunktet. Senere prisændringer rører ikke eksisterende bestillinger.
+    amountOre: integer("amount_ore").notNull(),
+    status: ticketOrderStatus("status").notNull().default("pending"),
+    provider: paymentProvider("provider"),
+    providerRef: text("provider_ref").unique(),
+    providerPaymentId: text("provider_payment_id"),
+    // Hemmelig kode i linket til køberens billetside.
+    accessToken: text("access_token").notNull().unique(),
+    ipHash: text("ip_hash"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
+  },
+  (t) => [index("ticket_orders_event_idx").on(t.ticketEventId, t.status), index("ticket_orders_club_idx").on(t.clubId)],
+);
+
+// Én række pr. billet. Koden i QR-koden er hemmelig; en refunderet billet får voidedAt.
+export const tickets = pgTable(
+  "tickets",
+  {
+    id: id(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => ticketOrders.id, { onDelete: "cascade" }),
+    ticketEventId: uuid("ticket_event_id")
+      .notNull()
+      .references(() => ticketEvents.id, { onDelete: "cascade" }),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    code: text("code").notNull().unique(),
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    usedByUserId: uuid("used_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("tickets_order_idx").on(t.orderId), index("tickets_event_idx").on(t.ticketEventId)],
+);

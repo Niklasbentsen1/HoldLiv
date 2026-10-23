@@ -55,6 +55,14 @@ import {
   deletePost,
   setPostPinned,
   saveSiteSettings,
+  admitTicket,
+  cancelTicketEvent,
+  completeTicketOrder,
+  createTicketEvent,
+  createTicketOrder,
+  refundTicketOrder,
+  sendTicketMail,
+  updateTicketEvent,
   setPostPublic,
   postMessage,
   removePushSubscription,
@@ -1534,4 +1542,96 @@ export async function giveCertificateConsentAction(formData: FormData) {
   const { ctx } = await requireSession();
   await attempt("/vagtplan", () => giveCertificateConsent(db, ctx, str(formData, "certificateId")));
   revalidatePath("/vagtplan");
+}
+
+// --- Billetsalg ---
+
+const ticketInput = (f: FormData) => ({
+  name: str(f, "name"),
+  description: opt(f, "description"),
+  location: opt(f, "location"),
+  startsAt: parseLocalDateTime(str(f, "startsAt")),
+  priceOre: parseKr(str(f, "price") || "0"),
+  capacity: str(f, "capacity") === "" ? null : Number(str(f, "capacity")),
+  saleClosesAt: opt(f, "saleClosesAt") ? parseLocalDateTime(str(f, "saleClosesAt")) : null,
+  maxPerOrder: Number(str(f, "maxPerOrder") || 10),
+});
+
+export async function newTicketEvent(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/billetter"), () => createTicketEvent(db, ctx, str(formData, "clubId"), ticketInput(formData)));
+  revalidatePath("/kasse/billetter");
+  redirect(kasse(formData, "/billetter"));
+}
+
+export async function editTicketEvent(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/billetter"), () => updateTicketEvent(db, ctx, str(formData, "ticketEventId"), ticketInput(formData)));
+  revalidatePath("/kasse/billetter");
+  redirect(kasse(formData, "/billetter"));
+}
+
+export async function cancelTicketEventAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/billetter"), () => cancelTicketEvent(db, ctx, str(formData, "ticketEventId"), paymentProviderOrUndefined()));
+  revalidatePath("/kasse/billetter");
+  redirect(kasse(formData, "/billetter"));
+}
+
+export async function refundTicketOrderAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/billetter"), () => refundTicketOrder(db, ctx, str(formData, "orderId"), getPaymentProvider()));
+  revalidatePath("/kasse/billetter");
+  redirect(kasse(formData, "/billetter"));
+}
+
+export interface BuyTicketsState {
+  error?: string;
+  values?: Record<string, string>;
+}
+
+/** Den åbne billetside. Ingen login; honeypot-feltet "website" skal være tomt. */
+export async function buyTicketsAction(ticketEventId: string, _: BuyTicketsState, formData: FormData): Promise<BuyTicketsState> {
+  const values = Object.fromEntries([...formData.entries()].filter(([, v]) => typeof v === "string")) as Record<string, string>;
+  if (str(formData, "website")) return { error: "Noget gik galt. Prøv igen om lidt." };
+  let url: string;
+  try {
+    const result = await createTicketOrder(
+      db,
+      ticketEventId,
+      { name: str(formData, "name"), email: str(formData, "email"), quantity: Number(str(formData, "quantity") || 1), acceptTerms: formData.get("acceptTerms") === "on" },
+      getPaymentProvider(),
+      await origin(),
+      sendMail,
+      new Date(),
+      ((await headers()).get("x-forwarded-for") ?? "").split(",")[0].trim() || null,
+    );
+    url = result.redirectUrl;
+  } catch (e) {
+    const technical = e instanceof Error && (("cause" in e && !!e.cause) || e.message.startsWith("Failed query"));
+    if (technical || !(e instanceof Error)) console.error(e);
+    return { error: e instanceof Error && !technical ? e.message : "Noget gik galt. Prøv igen om lidt.", values };
+  }
+  redirect(url);
+}
+
+export async function completeTestTicketPayment(formData: FormData) {
+  if (!mockPaymentsEnabled()) throw new Error("Testbetaling er slået fra");
+  const sessionId = str(formData, "session");
+  const back = `/billetter/test/${sessionId}`;
+  let token: string | null = null;
+  await attempt(back, async () => {
+    const done = await completeTicketOrder(db, sessionId);
+    if (!done) throw new Error("Betalingen findes ikke");
+    token = done.accessToken;
+    if (!done.alreadyDone) await sendTicketMail(db, done.orderId, sendMail, await origin());
+  });
+  redirect(`/billetter/ordre/${token}`);
+}
+
+export async function admitTicketAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const code = str(formData, "code");
+  await attempt(`/billet/${code}`, () => admitTicket(db, ctx, code));
+  redirect(`/billet/${code}`);
 }

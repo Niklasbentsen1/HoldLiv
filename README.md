@@ -226,3 +226,8 @@ Skærpet (arbejdsplan 38, del 6): i en anonym afstemning gemmes stemmen uden pro
 ## Hjemmeside
 
 Foreningens admin tænder en offentlig side på `/klub/<slug>` under Forening, Hjemmeside. Siden kræver ikke login og viser kun det, foreningen selv har valgt: velkomsttekst og kontakt, holdenes navne og sæson, aktiviteter de næste 30 dage (titel, tid, sted, hold; slået fra som standard, fordi børneholdenes tider så bliver offentlige), de nyheder ledelsen har markeret "vis på hjemmesiden", og link til online indmeldelse. Aldrig medlemmer, trænere, børn, svar eller betalinger. Eget domæne og skabeloner er ikke bygget endnu.
+
+## Billetsalg
+
+Admin og kasserer opretter et arrangement med billetsalg under Kasse, Billetter. Foreningen sætter selv prisen (0 = gratis), antal pladser, hvornår salget lukker og højst antal pr. bestilling. Salgssiden `/billetter/<id>` er åben uden login (og vises på hjemmesiden). Køberen oplyser navn og e-mail, betaler via foreningens Stripe-konto (testbetaling uden nøgle) og får et hemmeligt link og en mail med billetterne som QR-koder. En bestilling holder pladserne i 35 minutter. QR-koden åbner `/billet/<kode>`, hvor admin, kasserer og trænere i foreningen (efter login) ser, om billetten er gyldig, og trykker "Slip ind"; en billet kan kun bruges én gang. Kassereren kan refundere en bestilling, så billetterne bliver ugyldige.
+

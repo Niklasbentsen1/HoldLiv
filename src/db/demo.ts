@@ -12,6 +12,7 @@ import {
   addFundEntry,
   createScreen,
   createPost,
+  createTicketEvent,
   saveSignupSettings,
   saveSiteSettings,
   uploadDocument,
@@ -399,4 +400,12 @@ export async function seedArchiveDemo(db: Db, demo: Awaited<ReturnType<typeof se
   });
   await saveSignupSettings(db, karen, demo.club.id, { enabled: true, minAge: null, maxAge: null, terms: null });
   await createPost(db, karen, { mail: async () => {}, sms: null, baseUrl: "" }, { kind: "news", scope: `club:${demo.club.id}`, title: "Sæsonstart for alle hold", body: "Vi starter sæsonen i næste uge. Kom og vær med!", publicOnSite: true });
+  await createTicketEvent(db, karen, demo.club.id, {
+    name: "Hjemmekamp: Skovby IF mod Hammel GF",
+    description: "Serie 3, hjemmebane. Der er kaffe og kage i klubhuset.",
+    location: "Hjemmebane, bane 1",
+    startsAt: new Date(now.getTime() + 5 * 86_400_000),
+    priceOre: 5000,
+    capacity: 200,
+  });
 }

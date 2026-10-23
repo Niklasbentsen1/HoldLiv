@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { getPublicSite } from "../../../services";
 import { db } from "../../../lib/db";
 import { Crest } from "../../../components/ui";
-import { TYPE_LABEL, dayHeading, time } from "../../../lib/format";
+import { kr } from "../../../lib/money";
+import { TYPE_LABEL, dayHeading, time, when as dateTime } from "../../../lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,27 @@ export default async function Site({ params }: { params: Promise<{ slug: string 
               <p className="chat-text" style={{ margin: 0 }}>{n.body}</p>
             </article>
           ))}
+        </section>
+      )}
+
+      {site.tickets.length > 0 && (
+        <section style={{ marginBottom: 24 }}>
+          <h2 className="section-head">Billetter</h2>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+            {site.tickets.map((t) => (
+              <li key={t.id} className="card" style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ flex: 1 }}>
+                  <strong className="block">{t.name}</strong>
+                  <span className="muted small">
+                    {dateTime(t.startsAt)}
+                    {t.location ? ` · ${t.location}` : ""}
+                  </span>
+                </span>
+                <span>{t.priceOre === 0 ? "Gratis" : kr(t.priceOre)}</span>
+                {t.soldOut ? <span className="pill cancel">Udsolgt</span> : <Link href={`/billetter/${t.id}`} className="button">Køb billetter</Link>}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

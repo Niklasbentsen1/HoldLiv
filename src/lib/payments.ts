@@ -16,6 +16,13 @@ export interface CheckoutRequest {
   baseUrl: string;
   /** Betaleren har sagt ja til, at kortet gemmes og bruges til senere opkrævninger. */
   saveCard?: boolean;
+  /** Billetsalg: betaleren har ikke login, så betalingen vender tilbage til en anden side end kontingentets. */
+  successUrl?: string;
+  cancelUrl?: string;
+  /** Sti til testbetalingen, når Stripe ikke er sat op. Standard: /betal/test. */
+  mockPath?: string;
+  /** Sessionen udløber her (Stripe kræver 30 minutter til 24 timer). Uden: Stripes standard. */
+  expiresAt?: Date;
 }
 
 export interface SavedCardRef {
@@ -40,6 +47,8 @@ export interface PaymentProvider {
   findPaymentForCharge(chargeId: string, connectedAccountId: string | null): Promise<string | null>;
   /** Fjerner et gemt kort hos udbyderen. */
   removeCard(card: SavedCardRef, connectedAccountId: string | null): Promise<void>;
+  /** Lukker en åben betalingsside, så køberen ikke kan betale mere (fx når et arrangement aflyses). */
+  expireCheckout(sessionId: string, connectedAccountId: string | null): Promise<void>;
   /** Opretter foreningens Stripe-konto (første gang) og giver et link til Stripes onboarding. */
   connectAccount(existingAccountId: string | null, baseUrl: string): Promise<{ accountId: string; url: string }>;
 }
@@ -51,7 +60,7 @@ export const mockProvider: PaymentProvider = {
   name: "mock",
   async createCheckout(req) {
     const sessionId = `test_${randomBytes(12).toString("base64url")}`;
-    return { sessionId, url: `${req.baseUrl}/betal/test/${sessionId}` };
+    return { sessionId, url: `${req.baseUrl}${req.mockPath ?? "/betal/test"}/${sessionId}` };
   },
   async refund() {},
   async retrieveSavedCard() {
@@ -67,6 +76,7 @@ export const mockProvider: PaymentProvider = {
     return null;
   },
   async removeCard() {},
+  async expireCheckout() {},
   async connectAccount(existing, baseUrl) {
     return { accountId: existing ?? `acct_test_${randomBytes(6).toString("hex")}`, url: `${baseUrl}/kasse?stripe=klar` };
   },
@@ -128,9 +138,10 @@ export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): Pay
           metadata: { charge_id: req.chargeId },
           payment_intent_data: { metadata: { charge_id: req.chargeId }, ...(req.saveCard ? { setup_future_usage: "off_session" } : {}) },
           ...(req.saveCard ? { customer_creation: "always" } : {}),
-          success_url: `${req.baseUrl}${successPath}?session={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${req.baseUrl}${cancelPath}`,
+          success_url: req.successUrl ?? `${req.baseUrl}${successPath}?session={CHECKOUT_SESSION_ID}`,
+          cancel_url: req.cancelUrl ?? `${req.baseUrl}${cancelPath}`,
           locale: "da",
+          expires_at: req.expiresAt ? Math.floor(req.expiresAt.getTime() / 1000) : undefined,
         },
         req.connectedAccountId,
       );
@@ -181,6 +192,9 @@ export function stripeProvider(secretKey: string, fetchFn: FetchFn = fetch): Pay
     },
     async removeCard(card, account) {
       await call(`payment_methods/${encodeURIComponent(card.paymentMethodId)}/detach`, {}, account);
+    },
+    async expireCheckout(sessionId, account) {
+      await call(`checkout/sessions/${encodeURIComponent(sessionId)}/expire`, {}, account);
     },
     async connectAccount(existing, baseUrl) {
       const accountId = existing ?? String((await call("accounts", { type: "standard", country: "DK" })).id);
