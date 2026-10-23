@@ -34,7 +34,7 @@ export async function listFinanceClubs(db: Db, ctx: AccessContext) {
   const ids = financeClubIds(ctx);
   if (ids.length === 0) return [];
   const rows = await db
-    .select({ id: clubs.id, name: clubs.name, stripeAccountId: clubs.stripeAccountId, arrearsBlockDays: clubs.arrearsBlockDays, autoChargeEnabled: clubs.autoChargeEnabled })
+    .select({ id: clubs.id, name: clubs.name, stripeAccountId: clubs.stripeAccountId, arrearsBlockDays: clubs.arrearsBlockDays, cardInvalidWhenOverdue: clubs.cardInvalidWhenOverdue, autoChargeEnabled: clubs.autoChargeEnabled })
     .from(clubs)
     .where(inArray(clubs.id, ids))
     .orderBy(asc(clubs.name));
@@ -825,6 +825,13 @@ export async function connectPayments(db: Db, ctx: AccessContext, clubId: string
 }
 
 export const canHandleFinance = (ctx: AccessContext, clubId: string) => can(ctx, { action: "finance.manage", clubId });
+
+/** Om medlemskortet er ugyldigt, når medlemmet har en forfalden opkrævning. Standard: gyldigt. */
+export async function setCardOverdueRule(db: Db, ctx: AccessContext, clubId: string, invalidWhenOverdue: boolean) {
+  assertCan(ctx, { action: "finance.manage", clubId });
+  await db.update(clubs).set({ cardInvalidWhenOverdue: invalidWhenOverdue }).where(eq(clubs.id, clubId));
+  await logAudit(db, { action: "card.overdue_rule", clubId, actorUserId: ctx.userId, detail: { invalidWhenOverdue } });
+}
 
 /** Efter så mange dages restance spærres medlemmet for nye hold. Tom = ingen spærring. */
 export async function setArrearsBlock(db: Db, ctx: AccessContext, clubId: string, days: number | null) {

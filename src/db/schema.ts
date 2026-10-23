@@ -182,6 +182,8 @@ export const clubs = pgTable("clubs", {
   signupTerms: text("signup_terms"),
   // Efter så mange dages restance kan medlemmet ikke tilmelde sig nye hold. Null = ingen spærring.
   arrearsBlockDays: integer("arrears_block_days"),
+  // Medlemskortet er ugyldigt ved en forfalden opkrævning. Foreningen vælger selv; standard er gyldigt.
+  cardInvalidWhenOverdue: boolean("card_invalid_when_overdue").notNull().default(false),
   // Foreningen tillader, at medlemmer gemmer et kort, så forfaldne opkrævninger trækkes automatisk.
   autoChargeEnabled: boolean("auto_charge_enabled").notNull().default(false),
   // Foreningens egen kilometersats til kørselsgodtgørelse, i øre pr. km. Null = kørsel kan ikke indberettes. HoldLiv fastsætter ingen sats.
@@ -1286,6 +1288,23 @@ export const pollOptions = pgTable(
   (t) => [index("poll_options_poll_idx").on(t.pollId, t.position)],
 );
 
+// Hvem der har stemt (men ikke hvad). Sikrer én stemme pr. spiller, også i en anonym afstemning.
+export const pollVoters = pgTable(
+  "poll_voters",
+  {
+    id: id(),
+    pollId: uuid("poll_id")
+      .notNull()
+      .references(() => polls.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("poll_voters_unique").on(t.pollId, t.profileId)],
+);
+
+// Selve stemmen. I en anonym afstemning er profileId tom, så stemmen ikke kan føres tilbage til personen, heller ikke i databasen.
 export const pollVotes = pgTable(
   "poll_votes",
   {
@@ -1296,9 +1315,7 @@ export const pollVotes = pgTable(
     optionId: uuid("option_id")
       .notNull()
       .references(() => pollOptions.id, { onDelete: "cascade" }),
-    profileId: uuid("profile_id")
-      .notNull()
-      .references(() => profiles.id, { onDelete: "cascade" }),
+    profileId: uuid("profile_id").references(() => profiles.id, { onDelete: "cascade" }),
     votedByUserId: uuid("voted_by_user_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },

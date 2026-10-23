@@ -18,7 +18,7 @@ export default async function Cards({ searchParams }: { searchParams: Promise<{ 
 
   return (
     <Shell ctx={ctx} active="/medlemskort">
-      <PageHead title="Medlemskort" sub="Vis kortet til træneren eller i receptionen. QR-koden viser kun, at medlemskabet er gyldigt." />
+      <PageHead title="Medlemskort" sub="Vis kortet til træneren eller i receptionen. Den, der scanner, ser navn, hold og om medlemskabet er gyldigt. Vis kun kortet til en træner eller en administrator." />
       <ErrorBox message={fejl} />
       {cards.length === 0 && <Empty icon="card">Du eller dine børn er ikke aktive medlemmer af en forening endnu.</Empty>}
       <ul className="events">

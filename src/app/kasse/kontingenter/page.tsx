@@ -4,7 +4,7 @@ import { requireSession } from "../../../lib/session";
 import { INTERVAL_LABEL, kr, localDate, nextPeriod, periodContaining, type FeeInterval } from "../../../lib/money";
 import { ErrorBox } from "../../../components/Shell";
 import { KasseShell, NoAccess, pickFinanceClub } from "../../../components/Kasse";
-import { chargeFee, editFee, newFee, saveArrearsBlock, saveAutoCharge, teamFee } from "../../actions";
+import { chargeFee, editFee, newFee, saveArrearsBlock, saveAutoCharge, saveCardOverdueRule, teamFee } from "../../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -186,6 +186,15 @@ export default async function Fees({ searchParams }: { searchParams: Promise<{ k
         <label className="grow">
           Spær for nye hold efter så mange dages restance <span className="muted">(tomt = ingen spærring; gælder tilmelding via invitationslink)</span>
           <input name="days" type="number" min={0} max={365} defaultValue={club.arrearsBlockDays ?? ""} />
+        </label>
+        <button>Gem</button>
+      </form>
+
+      <form action={saveCardOverdueRule} className="inline">
+        <input type="hidden" name="clubId" value={club.id} />
+        <label className="grow">
+          <input name="invalid" type="checkbox" defaultChecked={club.cardInvalidWhenOverdue} /> Medlemskortet er ikke gyldigt, når medlemmet har en forfalden opkrævning
+          <span className="muted small block">Trænere, der scanner kortet, ser kun &quot;ikke gyldigt&quot;, ikke at det skyldes betaling, men de kan selv regne det ud, hvis de kender reglen.</span>
         </label>
         <button>Gem</button>
       </form>

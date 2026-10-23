@@ -105,6 +105,7 @@ import {
   connectPayments,
   createFee,
   setArrearsBlock,
+  setCardOverdueRule,
   createSingleCharge,
   getCheckout,
   grantTreasurerByEmail,
@@ -1002,6 +1003,12 @@ export async function editFee(formData: FormData) {
 export async function saveArrearsBlock(formData: FormData) {
   const { ctx } = await requireSession();
   await attempt(kasse(formData, "/kontingenter"), () => setArrearsBlock(db, ctx, str(formData, "clubId"), str(formData, "days") === "" ? null : Number(str(formData, "days"))));
+  revalidatePath("/kasse/kontingenter");
+}
+
+export async function saveCardOverdueRule(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/kontingenter"), () => setCardOverdueRule(db, ctx, str(formData, "clubId"), formData.get("invalid") === "on"));
   revalidatePath("/kasse/kontingenter");
 }
 
