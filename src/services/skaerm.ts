@@ -4,9 +4,10 @@
 //   - Admin opretter skærme under Forening. Hver skærm har et hemmeligt link (/skaerm/<token>), som kan nulstilles og slettes.
 //   - Siden kræver ikke login, så den viser kun det, der trygt kan hænge på en væg: aktivitetens titel, tid, sted og hold,
 //     samt foreningens egne nyheder. Aldrig personnavne, svar, fremmøde, beskeder eller betalinger. Holdnyheder vises ikke.
+//   - Titler og steder er fri tekst, som foreningen selv skriver; skriv ikke personnavne i dem, for alle ved skærmen kan læse dem.
 //   - Skærmen viser højst 14 dage frem og en fast besked, foreningen selv skriver. Højst 10 skærme pr. forening.
 import { randomBytes } from "node:crypto";
-import { and, asc, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { clubs, events, infoScreens, posts, teams } from "../db/schema";
 import { assertCan, type AccessContext } from "../auth/permissions";
@@ -121,7 +122,7 @@ export async function getScreenView(db: Db, token: string, now = new Date()) {
         await db
           .select({ id: posts.id, title: posts.title, body: posts.body, createdAt: posts.createdAt })
           .from(posts)
-          .where(and(eq(posts.clubId, screen.clubId), isNull(posts.teamId), eq(posts.kind, "news"), isNull(posts.deletedAt), gte(posts.createdAt, new Date(now.getTime() - 60 * 86_400_000))))
+          .where(and(eq(posts.clubId, screen.clubId), isNull(posts.teamId), eq(posts.kind, "news"), isNull(posts.deletedAt), or(isNull(posts.expiresAt), gt(posts.expiresAt, now)), gte(posts.createdAt, new Date(now.getTime() - 60 * 86_400_000))))
           .orderBy(desc(posts.pinned), desc(posts.createdAt))
           .limit(3)
       ).map((p) => ({ id: p.id, title: p.title, body: trim(p.body, 280), createdAt: p.createdAt }))

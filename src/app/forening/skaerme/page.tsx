@@ -43,7 +43,7 @@ export default async function Screens({ searchParams }: { searchParams: Promise<
       <PageHead
         back={{ href: "/forening", label: "Forening" }}
         title="Infoskærme"
-        sub="En skærm i klubhuset eller hallen viser dagens aktiviteter og foreningens nyheder. Åbn linket i skærmens browser. Skærmen viser aldrig navne på personer, svar eller betalinger."
+        sub="En skærm i klubhuset eller hallen viser dagens aktiviteter og foreningens nyheder. Åbn linket i skærmens browser. Skærmen viser aldrig navne på personer, svar eller betalinger, men aktiviteternes titler og steder og nyhederne vises, som de er skrevet. Skriv derfor ikke personnavne i dem."
       />
       <ErrorBox message={fejl} />
 

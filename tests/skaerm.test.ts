@@ -72,6 +72,8 @@ describe("infoskærm", () => {
     const karen = await ctxOf("karen");
     await createPost(db, karen, deliver, { kind: "news", scope: `club:${clubId}`, title: "Generalforsamling", body: "Kom og vær med" });
     await createPost(db, await ctxOf("mette"), deliver, { kind: "news", scope: `team:${demo.teams.u9.id}`, title: "Kun for U9", body: "Hemmeligt for holdet" });
+    const expired = await createPost(db, karen, deliver, { kind: "news", scope: `club:${clubId}`, title: "Gammel nyhed", body: "Udløbet" });
+    await sql`update posts set expires_at = now() - interval '1 hour' where id = ${expired.id}`;
     let view = (await getScreenView(db, token))!;
     expect(view.news.map((n) => n.title)).toEqual(["Generalforsamling"]);
     const [screen] = await listScreens(db, karen, clubId);
