@@ -13,7 +13,8 @@ let u9: string;
 let u11: string;
 
 const pdf = (text = "x") => new TextEncoder().encode(`%PDF-1.4\n${text}`);
-const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]);
+const zipOf = (dir: string) => new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...new TextEncoder().encode(`${dir}document.xml`)]);
+const zip = zipOf("xl/");
 
 beforeAll(async () => {
   await reset();
@@ -33,7 +34,8 @@ describe("filtyper", () => {
   it("genkender filer på indholdet", () => {
     expect(sniffDocument(pdf(), "a.pdf")).toBe("application/pdf");
     expect(sniffDocument(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), "a.jpg")).toBe("image/jpeg");
-    expect(sniffDocument(zip, "regler.docx")).toContain("wordprocessingml");
+    expect(sniffDocument(zipOf("word/"), "regler.docx")).toContain("wordprocessingml");
+    expect(sniffDocument(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]), "falsk.docx")).toBeNull();
     expect(sniffDocument(zip, "tal.xlsx")).toContain("spreadsheetml");
     // En zip-fil med en anden endelse, og en tekstfil med pdf-endelse, afvises.
     expect(sniffDocument(zip, "program.zip")).toBeNull();

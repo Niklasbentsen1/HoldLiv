@@ -40,8 +40,10 @@ export function sniffDocument(bytes: Uint8Array, fileName: string): string | nul
   if (at(0, 0x25, 0x50, 0x44, 0x46, 0x2d)) return TYPES.pdf;
   if (at(0, 0x50, 0x4b, 0x03, 0x04)) {
     const ext = fileName.toLowerCase().split(".").pop();
-    if (ext === "docx") return TYPES.docx;
-    if (ext === "xlsx") return TYPES.xlsx;
+    // Word og Excel er zip-filer med faste mapper; en vilkårlig zip med den rigtige endelse afvises.
+    const has = (s: string) => Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).includes(s);
+    if (ext === "docx" && has("word/")) return TYPES.docx;
+    if (ext === "xlsx" && has("xl/")) return TYPES.xlsx;
   }
   return null;
 }
