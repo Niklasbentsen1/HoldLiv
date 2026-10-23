@@ -1304,3 +1304,35 @@ export const pollVotes = pgTable(
   },
   (t) => [uniqueIndex("poll_votes_unique").on(t.optionId, t.profileId), index("poll_votes_profile_idx").on(t.pollId, t.profileId)],
 );
+
+// --- Dokumentarkiv ---
+
+export const documentAudience = pgEnum("document_audience", ["club", "team", "board"]);
+
+// Foreningens dokumenter: vedtægter, referater, regler, budgetter. club = alle medlemmer, team = et holds spillere,
+// forældre og trænere, board = kun administratorer og kasserer. Filen ligger i databasen (op til 10 MB).
+export const clubDocuments = pgTable(
+  "club_documents",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+    audience: documentAudience("audience").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    // Foreningens egen inddeling, fx "Vedtægter" eller "Referater". Fri tekst.
+    category: text("category"),
+    fileName: text("file_name").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    data: bytea("data").notNull(),
+    version: integer("version").notNull().default(1),
+    uploadedByUserId: uuid("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [index("club_documents_club_idx").on(t.clubId, t.audience), index("club_documents_team_idx").on(t.teamId)],
+);
