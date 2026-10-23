@@ -12,7 +12,7 @@ export default async function ImportPage({ searchParams }: { searchParams: Promi
   if (!klub || !ctx.adminClubs.has(klub)) return <Shell ctx={ctx}>Kun foreningens administratorer kan importere medlemmer.</Shell>;
   return (
     <Shell active="/forening" ctx={ctx}>
-      <PageHead title="Importér medlemmer" sub="Flyt medlemmerne fra Excel, Klubmodul eller Holdsport. Du ser, hvad der vil ske, før noget gemmes." />
+      <PageHead title="Importér medlemmer" sub="Gratis dataflytning fra Klubmodul, Holdsport eller Excel. Du ser, hvad der vil ske, før noget gemmes." />
       <p className="muted small">
         Gem listen som CSV (i Excel: Gem som, CSV). Kolonner genkendes på overskriften: fornavn, efternavn, fødselsdato, e-mail, telefon, hold og forælder. Andre kolonner bliver til egne felter.
         Står et hold ikke i foreningen, oprettes det. Eksisterende medlemmer overskrives aldrig, og import går uden om holdenes antal pladser. Flere hold i samme felt skilles med komma eller lodret streg (et holdnavn må derfor ikke indeholde komma). <Link href={`/kasse/medlemmer?klub=${klub}`}>Til medlemslisten (kan hentes som CSV)</Link>

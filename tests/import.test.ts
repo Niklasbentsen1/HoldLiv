@@ -36,7 +36,7 @@ describe("csv og kolonnegæt", () => {
   });
   it("genkender kolonner fra Klubmodul/Holdsport-lignende overskrifter og gør resten til egne felter", () => {
     const m = detectMapping(["Fornavn", "Efternavn", "Fødselsdato", "E-mail", "Mobilnr.", "Afdeling", "Forælder: navn", "Forælder: e-mail", "Medlemsnummer", "Status"]);
-    expect(m.map((c) => c.target)).toEqual(["firstName", "lastName", "birthDate", "email", "phone", "team", "guardianName", "guardianEmail", "custom", "ignore"]);
+    expect(m.map((c) => c.target)).toEqual(["firstName", "lastName", "birthDate", "email", "phone", "team", "guardianName", "guardianEmail", "custom", "status"]);
     expect(detectMapping(["Navn", "Fødselsdato"]).map((c) => c.target)).toEqual(["fullName", "birthDate"]);
   });
   it("forstår danske datoer og afviser umulige", () => {
@@ -130,5 +130,26 @@ describe("import", () => {
     expect(csv).toContain("Skostørrelse");
     expect(csv).toContain("Anna;Hansen");
     expect(csv).toMatch(/;33\r?\n/);
+  });
+});
+
+describe("dataflytning fra Klubmodul og Holdsport", () => {
+  it("genkender statuskolonnen", () => {
+    const h = ["Fulde navn", "Fødselsdato", "Status", "Holdnavn", "Mobiltelefon"];
+    expect(detectMapping(h).map((c) => c.target)).toEqual(["fullName", "birthDate", "status", "team", "phone"]);
+  });
+
+  it("springer udmeldte over og melder det", async () => {
+    const u = await registerUser(db, "flyt@imp.test", { firstName: "Fl", lastName: "Yt", birthDate: "1970-01-01" });
+    const d = db;
+    const ctx = await loadAccessContext(db, u.user.id, now);
+    const clubId = (await createClub(db, ctx, "Flyt IF", "flyt-if")).id;
+    const ctx2 = await loadAccessContext(db, u.user.id, now);
+    const csv = "Navn;Fødselsdato;Status;Hold\nAnna Hansen;12-03-2015;Aktiv;U9\nBo Jensen;01-01-2014;Udmeldt;U9\nCarl Dam;02-02-2013;Aktiv;U11";
+    const r = await runImport(d, ctx2, clubId, csv, null, true, "klubmodul");
+    expect(r.inactive).toBe(1);
+    expect(r.commit).toEqual({ created: 2, updated: 0, teamsCreated: 2 });
+    const again = await runImport(d, ctx2, clubId, csv, null, false, "klubmodul");
+    expect(again.counts).toEqual({ new: 0, existing: 2, duplicate: 0, error: 0 });
   });
 });
