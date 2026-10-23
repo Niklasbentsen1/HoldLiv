@@ -58,7 +58,7 @@ export function ImportBox({ clubId }: { clubId: string }) {
         <div className="card stack">
           <h2 className="section-head">Importen er færdig</h2>
           <p>
-            {done.created} nye medlemmer er oprettet, {done.updated} eksisterende er opdateret
+            {done.created} {done.created === 1 ? "nyt medlem er" : "nye medlemmer er"} oprettet, {done.updated} eksisterende er opdateret
             {done.teamsCreated ? `, og ${done.teamsCreated} nye hold er oprettet` : ""}.
           </p>
           <p className="muted small">Næste skridt: send holdenes invitationslink til trænere og forældre, så de kan logge ind, og opret kontingenter med jeres egne priser.</p>
@@ -93,7 +93,7 @@ export function ImportBox({ clubId }: { clubId: string }) {
             <p>
               {counts.new} nye, {counts.existing} findes allerede (udfyldes kun, hvis noget mangler), {counts.duplicate} dubletter springes over
               {counts.error ? `, ${counts.error} med fejl` : ""}.
-              {state.inactive ? ` ${state.inactive} udmeldte medlemmer flyttes ikke med.` : ""}
+              {state.inactive ? ` ${state.inactive} ${state.inactive === 1 ? "udmeldt medlem flyttes" : "udmeldte medlemmer flyttes"} ikke med.` : ""}
             </p>
             {!!state.newTeams?.length && <p>Nye hold oprettes: {state.newTeams.join(", ")}.</p>}
             {!!state.sample?.length && (
@@ -109,7 +109,7 @@ export function ImportBox({ clubId }: { clubId: string }) {
               </ul>
             )}
             <button name="intent" value="commit" disabled={pending || counts.error > 0 || counts.new + counts.existing === 0}>
-              {pending ? "Importerer…" : `Importér ${counts.new + counts.existing} medlemmer`}
+              {pending ? "Importerer…" : `Importér ${counts.new + counts.existing} ${counts.new + counts.existing === 1 ? "medlem" : "medlemmer"}`}
             </button>
             {counts.error > 0 && <p className="muted small">Ret fejlene i filen og vælg den igen, før du kan importere.</p>}
             <a href="" className="muted small">Start forfra med en anden fil</a>

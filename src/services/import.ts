@@ -53,10 +53,9 @@ const ALIASES: Record<Target, string[]> = {
 const ALIAS_LOOKUP = new Map<string, Target>(Object.entries(ALIASES).flatMap(([t, list]) => list.map((a) => [a, t as Target] as const)));
 
 /** Gætter, hvad hver kolonne er. Ukendte kolonner bliver til egne felter, og hver type bruges højst én gang. */
-export function detectMapping(headers: string[], source: ImportSource = "excel"): ColumnMap[] {
+export function detectMapping(headers: string[]): ColumnMap[] {
   const used = new Set<Target>();
   return headers.map((h) => {
-    if (norm(h) === "status" && source === "excel") return { target: "ignore" };
     const t = ALIAS_LOOKUP.get(norm(h));
     if (t && !used.has(t)) {
       used.add(t);
@@ -176,7 +175,7 @@ export async function runImport(db: Db, ctx: AccessContext, clubId: string, text
   if (table.length < 2) throw new Error("Filen skal have en overskriftsrække og mindst ét medlem.");
   if (table.length - 1 > MAX_IMPORT_ROWS) throw new Error(`Højst ${MAX_IMPORT_ROWS} medlemmer ad gangen.`);
   const headers = table[0];
-  const map = mapping && mapping.length === headers.length ? mapping : detectMapping(headers, source);
+  const map = mapping && mapping.length === headers.length ? mapping : detectMapping(headers);
   if (!map.some((m) => m.target === "firstName" || m.target === "fullName")) throw new Error("Kunne ikke finde en kolonne med navne. Vælg hvilken kolonne der er navn.");
   const rows = parseRows(table, map);
 

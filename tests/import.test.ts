@@ -36,7 +36,7 @@ describe("csv og kolonnegæt", () => {
   });
   it("genkender kolonner fra Klubmodul/Holdsport-lignende overskrifter og gør resten til egne felter", () => {
     const m = detectMapping(["Fornavn", "Efternavn", "Fødselsdato", "E-mail", "Mobilnr.", "Afdeling", "Forælder: navn", "Forælder: e-mail", "Medlemsnummer", "Status"]);
-    expect(m.map((c) => c.target)).toEqual(["firstName", "lastName", "birthDate", "email", "phone", "team", "guardianName", "guardianEmail", "custom", "ignore"]);
+    expect(m.map((c) => c.target)).toEqual(["firstName", "lastName", "birthDate", "email", "phone", "team", "guardianName", "guardianEmail", "custom", "status"]);
     expect(detectMapping(["Navn", "Fødselsdato"]).map((c) => c.target)).toEqual(["fullName", "birthDate"]);
   });
   it("forstår danske datoer og afviser umulige", () => {
@@ -134,10 +134,9 @@ describe("import", () => {
 });
 
 describe("dataflytning fra Klubmodul og Holdsport", () => {
-  it("læser statuskolonnen kun for Klubmodul og Holdsport", () => {
+  it("genkender statuskolonnen", () => {
     const h = ["Fulde navn", "Fødselsdato", "Status", "Holdnavn", "Mobiltelefon"];
-    expect(detectMapping(h).map((c) => c.target)).toEqual(["fullName", "birthDate", "ignore", "team", "phone"]);
-    expect(detectMapping(h, "klubmodul").map((c) => c.target)).toEqual(["fullName", "birthDate", "status", "team", "phone"]);
+    expect(detectMapping(h).map((c) => c.target)).toEqual(["fullName", "birthDate", "status", "team", "phone"]);
   });
 
   it("springer udmeldte over og melder det", async () => {
