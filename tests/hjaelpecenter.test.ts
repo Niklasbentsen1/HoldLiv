@@ -46,6 +46,7 @@ describe("support", () => {
     expect(r.subject).toBe("Hjælp til import");
     expect(r.replyEmail).toBe("mette@holdliv.test");
     expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0][3]).toEqual({ replyTo: "mette@holdliv.test" });
     expect(send.mock.calls[0][0]).toBe("support@holdliv.test");
     expect((await listMySupportRequests(db, ctx)).map((x) => x.id)).toContain(r.id);
   });

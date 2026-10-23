@@ -34,7 +34,7 @@ export function readDevOutbox(email: string) {
 }
 
 /** Almindelige beskeder, fx rykkere for kontingent. Uden nøgle skrives de kun i loggen. */
-export async function sendMail(to: string, subject: string, text: string) {
+export async function sendMail(to: string, subject: string, text: string, opts: { replyTo?: string } = {}) {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     if (!devOutboxEnabled()) throw new Error("RESEND_API_KEY mangler, så der kan ikke sendes mails");
@@ -44,7 +44,7 @@ export async function sendMail(to: string, subject: string, text: string) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: process.env.MAIL_FROM ?? "HoldLiv <login@holdliv.dk>", to, subject, text }),
+    body: JSON.stringify({ from: process.env.MAIL_FROM ?? "HoldLiv <login@holdliv.dk>", to, subject, text, ...(opts.replyTo ? { reply_to: opts.replyTo } : {}) }),
   });
   if (!res.ok) throw new Error(`Mailen kunne ikke sendes (${res.status})`);
 }

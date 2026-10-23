@@ -131,7 +131,7 @@ export const ARTICLES: Article[] = [
     keywords: ["barn", "børn", "tilføj barn", "værge", "familie"],
     body: [
       "Tilføj dine børn under Familie. Du svarer på aktiviteter og betaler for dem.",
-      "Når barnet fylder 18, overgår styringen til barnet selv.",
+      "Barnet har ikke eget login. Du styrer barnets profil, så længe barnet er tilmeldt via dig.",
     ],
     link: { href: "/familie", label: "Gå til Familie" },
   },
@@ -169,7 +169,7 @@ export const ARTICLES: Article[] = [
       "Foreningen er dataansvarlig, HoldLiv er databehandler. Læs privatlivspolitikken for detaljerne.",
       "Du kan se, hvilke samtykker du har givet, og trække dem tilbage under Privatliv.",
     ],
-    link: { href: "/privatliv", label: "Privatlivspolitik" },
+    link: { href: "/indstillinger/privatliv", label: "Dine samtykker under Privatliv" },
   },
 ];
 

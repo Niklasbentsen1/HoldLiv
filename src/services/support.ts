@@ -31,15 +31,18 @@ export async function submitSupportRequest(
     // Samtidige kald fra samme login står i kø, så døgngrænsen holder.
     await tx.execute(sqlLock(ctx.userId));
     const [{ n }] = await tx.select({ n: count() }).from(supportRequests).where(and(eq(supportRequests.userId, ctx.userId), gte(supportRequests.createdAt, since)));
-    if (n >= MAX_REQUESTS_PER_DAY) throw new Error(`Du har sendt ${MAX_REQUESTS_PER_DAY} henvendelser i dag. Vent til i morgen, eller svar på den mail, du får.`);
+    if (n >= MAX_REQUESTS_PER_DAY) throw new Error(`Du har sendt ${MAX_REQUESTS_PER_DAY} henvendelser i dag. Prøv igen i morgen.`);
     const [r] = await tx.insert(supportRequests).values({ userId: ctx.userId, clubId, subject, message, replyEmail: u.email }).returning();
     return r;
   });
   await logAudit(db, { action: "support.requested", clubId, actorUserId: ctx.userId, targetType: "support_request", targetId: request.id });
-  if (mail?.to) {
+  if (!mail?.to) {
+    // Uden SUPPORT_EMAIL ligger henvendelsen kun i databasen, og ingen får besked. Det skal ikke ske i produktion uden at nogen kan se det.
+    if (process.env.NODE_ENV === "production") console.error("SUPPORT_EMAIL mangler: support-henvendelsen er gemt, men ingen er underrettet", request.id);
+  } else {
     const [club] = clubId ? await db.select({ name: clubs.name }).from(clubs).where(eq(clubs.id, clubId)) : [];
     try {
-      await mail.send(mail.to, `[Support] ${subject}`, `Fra: ${u.email}${club ? `\nForening: ${club.name}` : ""}\nHenvendelse: ${request.id}\n\n${message}`);
+      await mail.send(mail.to, `[Support] ${subject}`, `Fra: ${u.email}${club ? `\nForening: ${club.name}` : ""}\nHenvendelse: ${request.id}\n\n${message}`, { replyTo: u.email });
     } catch (e) {
       // Henvendelsen er gemt; en mailfejl må ikke få den til at se tabt ud.
       console.error("Support-mail fejlede", e);
