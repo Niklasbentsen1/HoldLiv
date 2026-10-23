@@ -239,6 +239,13 @@
       "when": 1792750610092,
       "tag": "0033_infoskaerm",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792750754866,
+      "tag": "0034_medlemskort",
+      "breakpoints": true
     }
   ]
 }

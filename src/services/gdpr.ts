@@ -36,6 +36,7 @@ import {
   savedCards,
   teamMembers,
   teamFundEntries,
+  memberCards,
   pollOptions,
   pollVotes,
   polls,
@@ -301,6 +302,7 @@ async function anonymize(tx: Tx, profileIds: string[], now: Date) {
   await tx.delete(matchEvents).where(and(inArray(matchEvents.profileId, profileIds), inArray(matchEvents.kind, ["yellow", "red"])));
   await tx.update(matchEvents).set({ profileId: null }).where(inArray(matchEvents.profileId, profileIds));
   await tx.update(matchEvents).set({ assistProfileId: null }).where(inArray(matchEvents.assistProfileId, profileIds));
+  await tx.delete(memberCards).where(inArray(memberCards.profileId, profileIds));
   await tx.delete(pollVotes).where(inArray(pollVotes.profileId, profileIds));
   await tx.update(teamFundEntries).set({ profileId: null, description: "Indbetaling (slettet medlem)" }).where(inArray(teamFundEntries.profileId, profileIds));
   await tx.update(fines).set({ description: "Slettet" }).where(inArray(fines.profileId, profileIds));

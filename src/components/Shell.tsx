@@ -18,6 +18,7 @@ export interface NavItem {
 /** Hovedmenuen. Nye områder (fx Medlemmer, Kontingent) tilføjes her. */
 export const NAV: NavItem[] = [
   { href: "/", label: "Overblik", icon: "home" },
+  { href: "/medlemskort", label: "Kort", icon: "card" },
   { href: "/familie", label: "Familie", icon: "family" },
   { href: "/nyheder", label: "Nyheder", icon: "star" },
   { href: "/betaling", label: "Betaling", icon: "card" },
