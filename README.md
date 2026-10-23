@@ -210,3 +210,5 @@ Trænerens kampark til aktiviteter af typen kamp: modstander, opstilling (på ba
 ## AI-medlemsservice
 
 Under *Hjælp* kan medlemmer stille spørgsmål om egne (og børns) aktiviteter og betalinger. Foreningens admin slår tjenesten til på Forening-siden (fra som standard). Med en rigtig udbyder (`ANTHROPIC_API_KEY`) kræves medlemmets samtykke (Privatliv), personer og hold sendes som "Person 1"/"Hold 1", og navnene sættes ind igen i svaret. Tjenesten kan kun læse, har en grænse på 30 spørgsmål i døgnet, og spørgsmålets tekst gemmes ikke i loggen.
+
+Holdkasse (modul "teamfund"): admin slår modulet til pr. hold. Trænerne (og admin) bogfører indbetalinger og udgifter på `/hold/<id>/holdkasse` med beløb, tekst og dato; hele holdet og forældrene ser saldo og poster, men kun trænerne ser, hvem der har betalt ind. Beløbene bestemmer holdet selv. Poster slettes aldrig, men annulleres; kassen kan ikke gå i minus (en udgift over saldoen afvises, og en indbetaling der allerede er brugt kan ikke annulleres). Holdkassen er adskilt fra bødekassen. Sletter man et medlem, fjernes navnet fra posten, men beløbet bliver stående. Kode: `src/services/holdkasse.ts`.

@@ -50,6 +50,7 @@ export async function mergeProfile(db: Db, keepId: string, dupId: string): Promi
       await tx.execute(sql`update member_field_values set profile_id = ${k} where profile_id = ${d} and not exists (select 1 from member_field_values x where x.field_id = member_field_values.field_id and x.profile_id = ${k})`);
       await tx.execute(sql`delete from member_field_values where profile_id = ${d}`);
       await tx.execute(sql`update signup_requests set profile_id = ${k} where profile_id = ${d}`);
+      await tx.execute(sql`update team_fund_entries set profile_id = ${k} where profile_id = ${d}`);
       // Opkrævninger flyttes med; en opkrævning, der ville give en dublet for samme sats og periode (eller et ekstra indmeldelsesgebyr), afbryder.
       await tx.execute(sql`update charges set profile_id = ${k} where profile_id = ${d} and not exists (select 1 from charges x where x.profile_id = ${k} and ((x.fee_id is not distinct from charges.fee_id and charges.fee_id is not null and x.period_start = charges.period_start) or (charges.kind = 'join_fee' and x.kind = 'join_fee' and x.club_id = charges.club_id)))`);
       for (const [table, col] of [["charges", "profile_id"], ...BLOCKING] as [string, string][]) {

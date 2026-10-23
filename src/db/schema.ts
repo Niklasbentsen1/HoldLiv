@@ -1220,3 +1220,30 @@ export const childCertificates = pgTable(
   },
   (t) => [uniqueIndex("child_certificates_unique").on(t.clubId, t.profileId), index("child_certificates_club_idx").on(t.clubId, t.status)],
 );
+
+// --- Holdkasse (modul "teamfund") ---
+
+export const fundEntryKind = pgEnum("fund_entry_kind", ["deposit", "withdrawal"]);
+
+// Holdets egen kasse, fx til pizza, sæsonafslutning eller en ny bold. Posterne slettes aldrig: en fejl rettes ved at
+// annullere posten, så historikken står tilbage. Saldoen er summen af de ikke-annullerede poster.
+export const teamFundEntries = pgTable(
+  "team_fund_entries",
+  {
+    id: id(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    kind: fundEntryKind("kind").notNull(),
+    amountOre: integer("amount_ore").notNull(),
+    description: text("description").notNull(),
+    // Hvem der har betalt ind (valgfrit). Kun trænere og admin ser navnet.
+    profileId: uuid("profile_id").references(() => profiles.id, { onDelete: "set null" }),
+    entryDate: date("entry_date").notNull(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelledByUserId: uuid("cancelled_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [index("team_fund_entries_team_idx").on(t.teamId, t.entryDate)],
+);

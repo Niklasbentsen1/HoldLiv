@@ -116,7 +116,9 @@ import {
   setFeeArchived,
   setTeamDefaultFee,
   saveModuleMatrix as saveModules,
+  addFundEntry,
   cancelFine,
+  cancelFundEntry,
   createFineType,
   giveFine,
   setFinePaid,
@@ -703,6 +705,28 @@ export const giveFineAction = async (f: FormData) =>
   });
 export const payFineAction = async (f: FormData) => finesAction(f, (ctx) => setFinePaid(db, ctx, str(f, "fineId"), str(f, "paid") === "1"));
 export const cancelFineAction = async (f: FormData) => finesAction(f, (ctx) => cancelFine(db, ctx, str(f, "fineId")));
+
+// --- Holdkasse ---
+
+async function teamFundAction(formData: FormData, fn: (ctx: Awaited<ReturnType<typeof requireSession>>["ctx"]) => Promise<unknown>) {
+  const { ctx } = await requireSession();
+  const back = `/hold/${str(formData, "teamId")}/holdkasse`;
+  await attempt(back, () => fn(ctx));
+  revalidatePath(back);
+  redirect(back);
+}
+
+export const addFundEntryAction = async (f: FormData) =>
+  teamFundAction(f, (ctx) =>
+    addFundEntry(db, ctx, str(f, "teamId"), {
+      kind: str(f, "kind") === "withdrawal" ? "withdrawal" : "deposit",
+      amountOre: parseKr(str(f, "amount")),
+      description: str(f, "description"),
+      profileId: opt(f, "profileId"),
+      entryDate: opt(f, "entryDate"),
+    }),
+  );
+export const cancelFundEntryAction = async (f: FormData) => teamFundAction(f, (ctx) => cancelFundEntry(db, ctx, str(f, "entryId")));
 
 // --- Kampe: opstilling, resultat, referat ---
 

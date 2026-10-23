@@ -291,6 +291,7 @@ export * from "./booking";
 export * from "./vagter";
 export * from "./kontrakter";
 export * from "./attester";
+export * from "./holdkasse";
 export * from "./memberStats";
 export * from "./memberService";
 export * from "./modules";
