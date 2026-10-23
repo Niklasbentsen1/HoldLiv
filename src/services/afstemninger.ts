@@ -6,10 +6,11 @@
 //     Man kan skifte sin stemme, til afstemningen lukker.
 //   - Afstemningen lukker ved sluttidspunktet (hvis der er et) eller når en træner lukker den.
 //   - Resultatet vises, når man har stemt, eller afstemningen er lukket. Trænerne ser det altid.
-//   - Hvem der har stemt hvad ses kun af trænerne, og slet ikke i en anonym afstemning.
+//   - Hvem der har stemt hvad ses kun af trænerne. I en anonym afstemning gemmes stemmen uden profil, så ingen kan se det,
+//     heller ikke i databasen; tallene vises først, når afstemningen er lukket, og stemmen kan ikke skiftes eller trækkes tilbage.
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { pollOptions, pollVotes, polls, profiles, teamMembers } from "../db/schema";
+import { pollOptions, pollVoters, pollVotes, polls, profiles, teamMembers } from "../db/schema";
 import { can, canActAs, type AccessContext } from "../auth/permissions";
 import { requireModule } from "./modules";
 import { logAudit } from "./audit";
@@ -95,7 +96,10 @@ export async function deletePoll(db: Db, ctx: AccessContext, pollId: string) {
   await logAudit(db, { action: "poll.deleted", clubId: team.clubId, actorUserId: ctx.userId, targetType: "poll", targetId: pollId });
 }
 
-/** Afgiv (eller skift) stemmen for en spiller på holdet. Egen profil som standard; en forælder angiver barnets profil. */
+/**
+ * Afgiv (eller skift) stemmen for en spiller på holdet. Egen profil som standard; en forælder angiver barnets profil.
+ * I en anonym afstemning gemmes stemmen uden profil, så den ikke kan føres tilbage til personen; derfor kan den ikke skiftes.
+ */
 export async function vote(db: Db, ctx: AccessContext, pollId: string, optionIds: string[], profileId?: string) {
   const target = profileId ?? ctx.profileId;
   if (!canActAs(ctx, target)) throw new Error("Du kan kun stemme for dig selv og dine børn.");
@@ -112,19 +116,27 @@ export async function vote(db: Db, ctx: AccessContext, pollId: string, optionIds
     if (!fresh || !isOpen(fresh, ctx.now)) throw new Error("Afstemningen er lukket.");
     const valid = await tx.select({ id: pollOptions.id }).from(pollOptions).where(and(eq(pollOptions.pollId, pollId), inArray(pollOptions.id, chosen)));
     if (valid.length !== chosen.length) throw new Error("Et af svarene hører ikke til afstemningen.");
-    await tx.delete(pollVotes).where(and(eq(pollVotes.pollId, pollId), eq(pollVotes.profileId, target)));
-    await tx.insert(pollVotes).values(chosen.map((optionId) => ({ pollId, optionId, profileId: target, votedByUserId: ctx.userId })));
+    const [existing] = await tx.select({ id: pollVoters.id }).from(pollVoters).where(and(eq(pollVoters.pollId, pollId), eq(pollVoters.profileId, target)));
+    if (existing && p.anonymous) throw new Error("Stemmen er afgivet. I en anonym afstemning kan man ikke skifte stemme.");
+    if (!existing) await tx.insert(pollVoters).values({ pollId, profileId: target });
+    else await tx.delete(pollVotes).where(and(eq(pollVotes.pollId, pollId), eq(pollVotes.profileId, target)));
+    await tx.insert(pollVotes).values(chosen.map((optionId) => ({ pollId, optionId, profileId: p.anonymous ? null : target, votedByUserId: p.anonymous ? null : ctx.userId })));
   });
 }
 
-/** Træk sin stemme tilbage, mens afstemningen er åben. */
+/** Træk sin stemme tilbage, mens afstemningen er åben. Ikke muligt i en anonym afstemning. */
 export async function withdrawVote(db: Db, ctx: AccessContext, pollId: string, profileId?: string) {
   const target = profileId ?? ctx.profileId;
   if (!canActAs(ctx, target)) throw new Error("Du kan kun stemme for dig selv og dine børn.");
   const p = await loadPoll(db, pollId);
   await requireModule(db, ctx, p.teamId, "polls");
-  if (!isOpen(p, ctx.now)) throw new Error("Afstemningen er lukket.");
-  await db.delete(pollVotes).where(and(eq(pollVotes.pollId, pollId), eq(pollVotes.profileId, target)));
+  if (p.anonymous) throw new Error("I en anonym afstemning kan man ikke trække sin stemme tilbage.");
+  await db.transaction(async (tx) => {
+    const [fresh] = await tx.select().from(polls).where(eq(polls.id, pollId)).for("update");
+    if (!fresh || !isOpen(fresh, ctx.now)) throw new Error("Afstemningen er lukket.");
+    await tx.delete(pollVotes).where(and(eq(pollVotes.pollId, pollId), eq(pollVotes.profileId, target)));
+    await tx.delete(pollVoters).where(and(eq(pollVoters.pollId, pollId), eq(pollVoters.profileId, target)));
+  });
 }
 
 /**
@@ -136,15 +148,16 @@ export async function listPolls(db: Db, ctx: AccessContext, teamId: string) {
   const lead = leads(ctx, team);
   const rows = await db.select().from(polls).where(eq(polls.teamId, teamId)).orderBy(desc(polls.createdAt)).limit(50);
   const ids = rows.map((r) => r.id);
-  const [options, votes, members] = await Promise.all([
+  const [options, votes, markers, members] = await Promise.all([
     ids.length ? db.select().from(pollOptions).where(inArray(pollOptions.pollId, ids)).orderBy(asc(pollOptions.position)) : [],
     ids.length
       ? db
           .select({ v: pollVotes, firstName: profiles.firstName, lastName: profiles.lastName })
           .from(pollVotes)
-          .innerJoin(profiles, eq(profiles.id, pollVotes.profileId))
+          .leftJoin(profiles, eq(profiles.id, pollVotes.profileId))
           .where(inArray(pollVotes.pollId, ids))
       : [],
+    ids.length ? db.select().from(pollVoters).where(inArray(pollVoters.pollId, ids)) : [],
     db
       .select({ id: profiles.id, firstName: profiles.firstName, lastName: profiles.lastName })
       .from(teamMembers)
@@ -162,10 +175,16 @@ export async function listPolls(db: Db, ctx: AccessContext, teamId: string) {
     polls: rows.map((p) => {
       const open = isOpen(p, ctx.now);
       const pVotes = votes.filter((v) => v.v.pollId === p.id);
-      const myVotes = pVotes.filter((v) => canActAs(ctx, v.v.profileId));
-      const hasVoted = voters.map((vt) => ({ profileId: vt.profileId, optionIds: myVotes.filter((v) => v.v.profileId === vt.profileId).map((v) => v.v.optionId) }));
-      const showResults = lead || !open || hasVoted.some((h) => h.optionIds.length > 0);
-      const voterCount = new Set(pVotes.map((v) => v.v.profileId)).size;
+      const pMarkers = markers.filter((m) => m.pollId === p.id);
+      const myVotes = voters.map((vt) => ({
+        profileId: vt.profileId,
+        voted: pMarkers.some((m) => m.profileId === vt.profileId),
+        // I en anonym afstemning er stemmen ikke knyttet til personen, så den kan ikke vises igen.
+        optionIds: p.anonymous ? [] : pVotes.filter((v) => v.v.profileId === vt.profileId).map((v) => v.v.optionId),
+      }));
+      const countVisible = lead || !open || myVotes.some((m) => m.voted);
+      // Anonyme afstemninger viser først tallene, når de er lukket, så ingen kan regne ud, hvem der stemte hvad.
+      const showResults = p.anonymous ? !open : countVisible;
       return {
         id: p.id,
         question: p.question,
@@ -176,8 +195,8 @@ export async function listPolls(db: Db, ctx: AccessContext, teamId: string) {
         closesAt: p.closesAt,
         showResults,
         eligible,
-        voterCount: showResults ? voterCount : null,
-        myVotes: hasVoted,
+        voterCount: countVisible ? pMarkers.length : null,
+        myVotes,
         options: options
           .filter((o) => o.pollId === p.id)
           .map((o) => {

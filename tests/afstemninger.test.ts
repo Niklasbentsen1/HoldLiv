@@ -76,7 +76,7 @@ describe("afstemninger", () => {
     await expect(vote(db, await ctxOf("mette"), p.id, [p.options[0].id], kid("william"))).rejects.toThrow(/Kun medlemmer af holdet/);
   });
 
-  it("viser trænerne hvem der stemte hvad, undtagen i en anonym afstemning", async () => {
+  it("viser trænerne hvem der stemte hvad, men ingen kan se det i en anonym afstemning", async () => {
     const mette = await ctxOf("mette");
     const open = await createPoll(db, mette, u9, { question: "Trøjefarve?", options: ["Rød", "Blå"] });
     const anon = await createPoll(db, mette, u9, { question: "Hemmelig?", options: ["Ja", "Nej"], anonymous: true });
@@ -87,8 +87,37 @@ describe("afstemninger", () => {
     await vote(db, await ctxOf("ali"), a.id, [a.options[1].id], kid("noor"));
     const after = await q("mette");
     expect(after.find((p) => p.id === open.id)!.options[0].names).toEqual(["Noor Hassan"]);
-    expect(after.find((p) => p.id === anon.id)!.options[1].names).toEqual([]);
-    expect(after.find((p) => p.id === anon.id)!.options[1].count).toBe(1);
+    // Anonym: ingen navne og ingen tal, før afstemningen er lukket; kun antal stemmer.
+    const hidden = after.find((p) => p.id === anon.id)!;
+    expect(hidden.showResults).toBe(false);
+    expect(hidden.options.every((x) => x.count === null && x.names.length === 0)).toBe(true);
+    expect(hidden.voterCount).toBe(1);
+    // Databasen kan heller ikke føre stemmen tilbage til personen.
+    const rows = await sql`select profile_id, voted_by_user_id from poll_votes where poll_id = ${anon.id}`;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].profile_id).toBeNull();
+    expect(rows[0].voted_by_user_id).toBeNull();
+    // Stemmen kan ikke skiftes eller trækkes tilbage, og man kan ikke stemme to gange.
+    await expect(vote(db, await ctxOf("ali"), a.id, [a.options[0].id], kid("noor"))).rejects.toThrow(/anonym/);
+    await expect(withdrawVote(db, await ctxOf("ali"), a.id, kid("noor"))).rejects.toThrow(/anonym/);
+    const ali = (await q("ali")).find((p) => p.id === anon.id)!;
+    expect(ali.myVotes.find((m) => m.profileId === kid("noor"))).toEqual({ profileId: kid("noor"), voted: true, optionIds: [] });
+    // Når den lukkes, vises tallene.
+    await closePoll(db, mette, anon.id);
+    const closed = (await q("mette")).find((p) => p.id === anon.id)!;
+    expect(closed.options.map((x) => x.count)).toEqual([0, 1]);
+    expect(closed.options.every((x) => x.names.length === 0)).toBe(true);
+  });
+
+  it("tæller kun én stemme, når samme spiller stemmer to gange samtidigt i en anonym afstemning", async () => {
+    const mette = await ctxOf("mette");
+    const p = await createPoll(db, mette, u9, { question: "Dobbelt?", options: ["A", "B"], anonymous: true });
+    const [view] = (await q("mette")).filter((x) => x.id === p.id);
+    const ali = await ctxOf("ali");
+    const results = await Promise.allSettled([vote(db, ali, p.id, [view.options[0].id], kid("noor")), vote(db, ali, p.id, [view.options[1].id], kid("noor"))]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const [row] = await sql`select count(*)::int as n from poll_votes where poll_id = ${p.id}`;
+    expect(row.n).toBe(1);
   });
 
   it("lukker ved sluttidspunktet og når træneren lukker den, og tillader ikke flere stemmer", async () => {

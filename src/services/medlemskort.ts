@@ -7,6 +7,7 @@
 //   - Scanningen kræver login som admin, kasserer eller træner i foreningen og viser navn, om medlemskabet er gyldigt,
 //     og holdene. Kun admin og kasserer ser, om der er en forfalden opkrævning; trænere ser aldrig noget om betaling.
 //   - Et kort er gyldigt, så længe medlemskabet er aktivt. Udmeldte og ventelistemedlemmer får "ikke gyldigt".
+//     Foreningen kan vælge, at et kort også er ugyldigt ved en forfalden opkrævning (standard: gyldigt). Trænere ser kun "ikke gyldigt".
 import { randomBytes } from "node:crypto";
 import { and, asc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
@@ -96,13 +97,15 @@ export async function checkCard(db: Db, ctx: AccessContext, token: string): Prom
     .innerJoin(teams, eq(teams.id, teamMembers.teamId))
     .where(and(eq(teamMembers.profileId, card.profileId), eq(teams.clubId, card.clubId)))
     .orderBy(asc(teams.name));
-  let overdue: boolean | null = null;
-  if (finance) {
+  const [rule] = await db.select({ strict: clubs.cardInvalidWhenOverdue }).from(clubs).where(eq(clubs.id, card.clubId));
+  let isOverdue = false;
+  if (finance || rule?.strict) {
     const [r] = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(charges)
       .where(and(eq(charges.clubId, card.clubId), eq(charges.profileId, card.profileId), eq(charges.status, "open"), lt(charges.dueDate, localDate(ctx.now)), sql`${charges.amountOre} > 0`));
-    overdue = r.n > 0;
+    isOverdue = r.n > 0;
   }
-  return { found: true, valid: row.status === "active" && !row.deletedAt, name: `${row.firstName} ${row.lastName}`, clubName: row.clubName, teams: teamRows.map((t) => t.team), overdue };
+  const overdue = finance ? isOverdue : null;
+  return { found: true, valid: row.status === "active" && !row.deletedAt && !(rule?.strict && isOverdue), name: `${row.firstName} ${row.lastName}`, clubName: row.clubName, teams: teamRows.map((t) => t.team), overdue };
 }

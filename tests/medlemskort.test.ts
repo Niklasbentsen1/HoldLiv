@@ -4,7 +4,7 @@ import { testDb } from "./db";
 import { seedDemo } from "../src/db/demo";
 import { loadAccessContext } from "../src/auth/context";
 import { ForbiddenError } from "../src/auth/permissions";
-import { checkCard, listMyCards, resetCard } from "../src/services";
+import { checkCard, listMyCards, resetCard, setCardOverdueRule } from "../src/services";
 
 const { db, sql, reset } = testDb();
 let demo: Awaited<ReturnType<typeof seedDemo>>;
@@ -60,6 +60,22 @@ describe("medlemskort", () => {
     expect(asAdmin).toMatchObject({ overdue: true });
     expect(asCoach).toMatchObject({ overdue: null });
     expect(JSON.stringify(asCoach)).not.toMatch(/overdue":true|amount|kr/);
+  });
+
+  it("er som standard gyldigt ved restance, men foreningen kan vælge ugyldigt uden at trænere ser hvorfor", async () => {
+    const noor = await cardOf("ali", kid("noor"));
+    expect(await checkCard(db, await ctxOf("mette"), noor.token)).toMatchObject({ valid: true, overdue: null });
+    await expect(setCardOverdueRule(db, await ctxOf("mette"), clubId, true)).rejects.toBeInstanceOf(ForbiddenError);
+    await setCardOverdueRule(db, await ctxOf("sofie"), clubId, true);
+    const asCoach = await checkCard(db, await ctxOf("mette"), noor.token);
+    expect(asCoach).toMatchObject({ valid: false, overdue: null });
+    expect(await checkCard(db, await ctxOf("sofie"), noor.token)).toMatchObject({ valid: false, overdue: true });
+    // Et medlem uden restance er stadig gyldigt.
+    const noOverdue = await cardOf("anne", kid("freja"));
+    expect(await checkCard(db, await ctxOf("sofie"), noOverdue.token)).toMatchObject({ valid: true, overdue: false });
+    expect(await checkCard(db, await ctxOf("mette"), noOverdue.token)).toMatchObject({ valid: true });
+    await setCardOverdueRule(db, await ctxOf("sofie"), clubId, false);
+    expect(await checkCard(db, await ctxOf("mette"), noor.token)).toMatchObject({ valid: true });
   });
 
   it("gør kortet ugyldigt, når medlemmet melder sig ud, og igen gyldigt ved genindmeldelse", async () => {

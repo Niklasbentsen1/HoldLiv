@@ -31,7 +31,7 @@ export default async function Polls({ params, searchParams }: { params: Promise<
               </div>
               {p.description && <p className="muted small">{p.description}</p>}
               <p className="muted small">
-                {p.multiple ? "Du kan vælge flere svar." : "Vælg ét svar."} {p.anonymous ? "Anonym afstemning." : ""}
+                {p.multiple ? "Du kan vælge flere svar." : "Vælg ét svar."} {p.anonymous ? "Anonym afstemning: tallene vises, når den er lukket, og stemmen kan ikke ændres." : ""}
                 {p.open && p.closesAt ? ` Lukker ${when(p.closesAt, null)}.` : ""}
               </p>
 
@@ -48,7 +48,7 @@ export default async function Polls({ params, searchParams }: { params: Promise<
                   ))}
                 </ul>
               )}
-              {p.showResults && (
+              {p.voterCount !== null && (
                 <p className="muted small">
                   {p.voterCount} af {p.eligible} har stemt.
                 </p>
@@ -56,7 +56,9 @@ export default async function Polls({ params, searchParams }: { params: Promise<
 
               {p.open &&
                 data.voters.map((v) => {
-                  const mine = p.myVotes.find((m) => m.profileId === v.profileId)?.optionIds ?? [];
+                  const my = p.myVotes.find((m) => m.profileId === v.profileId);
+                  const mine = my?.optionIds ?? [];
+                  if (p.anonymous && my?.voted) return <p key={v.profileId} className="muted small">{v.self ? "Din stemme" : `Stemmen for ${v.name}`} er afgivet.</p>;
                   return (
                     <form key={v.profileId} action={votePollAction} className="stack">
                       <input type="hidden" name="teamId" value={id} />
@@ -68,14 +70,14 @@ export default async function Polls({ params, searchParams }: { params: Promise<
                           <input type={p.multiple ? "checkbox" : "radio"} name="optionId" value={o.id} defaultChecked={mine.includes(o.id)} required={!p.multiple} /> {o.label}
                         </label>
                       ))}
-                      <button className="primary">{mine.length ? "Skift stemme" : "Stem"}</button>
+                      <button className="primary">{my?.voted ? "Skift stemme" : "Stem"}</button>
                     </form>
                   );
                 })}
               {p.open &&
                 data.voters.map((v) => {
-                  const mine = p.myVotes.find((m) => m.profileId === v.profileId)?.optionIds ?? [];
-                  return mine.length ? (
+                  const voted = !p.anonymous && p.myVotes.find((m) => m.profileId === v.profileId)?.voted;
+                  return voted ? (
                     <form key={v.profileId} action={withdrawVoteAction}>
                       <input type="hidden" name="teamId" value={id} />
                       <input type="hidden" name="pollId" value={p.id} />
