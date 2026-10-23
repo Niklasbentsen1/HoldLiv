@@ -24,7 +24,7 @@ export default async function Payments({ searchParams }: { searchParams: Promise
       <ErrorBox message={fejl} />
 
       <p className="small">
-        <Link href="/camps">Camps og arrangementer</Link> · <Link href="/udlaeg">Udlæg og kørsel</Link>
+        <Link href="/camps">Camps og arrangementer</Link> · <Link href="/udlaeg">Udlæg og kørsel</Link> · <Link href="/booking">Booking</Link>
       </p>
 
       <h2>Skal betales</h2>

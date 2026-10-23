@@ -343,7 +343,7 @@ export const eventResponses = pgTable(
 export const feeInterval = pgEnum("fee_interval", ["month", "quarter", "half_year", "year"]);
 export const chargeStatus = pgEnum("charge_status", ["open", "paid", "cancelled", "refunded"]);
 // fee = kontingent for en periode, join_fee = engangs indmeldelsesgebyr, other = enkeltopkrævning.
-export const chargeKind = pgEnum("charge_kind", ["fee", "join_fee", "other", "camp"]);
+export const chargeKind = pgEnum("charge_kind", ["fee", "join_fee", "other", "camp", "booking"]);
 export const paymentProvider = pgEnum("payment_provider", ["stripe", "mock", "manual"]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "refunded"]);
 
@@ -1042,4 +1042,62 @@ export const campSignups = pgTable(
     uniqueIndex("camp_signups_active_unique").on(t.campId, t.profileId).where(sql`${t.status} <> 'cancelled'`),
     index("camp_signups_camp_idx").on(t.campId, t.status, t.createdAt),
   ],
+);
+
+// --- Booking af baner, haller og udstyr ---
+
+export const bookingResourceKind = pgEnum("booking_resource_kind", ["court", "hall", "equipment"]);
+export const bookingStatus = pgEnum("booking_status", ["pending", "confirmed", "rejected", "cancelled"]);
+
+// Foreningens baner, haller og udstyr. Leje pr. time bestemmer foreningens egen admin/kasserer; 0 = gratis.
+export const bookingResources = pgTable(
+  "booking_resources",
+  {
+    id: id(),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: bookingResourceKind("kind").notNull(),
+    description: text("description"),
+    // Antal ens enheder, der kan bookes samtidig: 1 for en bane, fx 12 for bolde.
+    quantity: integer("quantity").notNull().default(1),
+    // Leje pr. time for enkeltpersoner (pr. enhed). Hold i foreningen booker uden gebyr.
+    pricePerHourOre: integer("price_per_hour_ore").notNull().default(0),
+    // Bookinger fra almindelige medlemmer skal godkendes af foreningen.
+    requiresApproval: boolean("requires_approval").notNull().default(false),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("booking_resources_club_idx").on(t.clubId)],
+);
+
+export const bookings = pgTable(
+  "bookings",
+  {
+    id: id(),
+    resourceId: uuid("resource_id")
+      .notNull()
+      .references(() => bookingResources.id, { onDelete: "cascade" }),
+    clubId: uuid("club_id")
+      .notNull()
+      .references(() => clubs.id, { onDelete: "cascade" }),
+    // Den profil bookingen er for (en selv eller et barn). Hold-bookinger har holdet i team_id og trænerens profil her.
+    profileId: uuid("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    bookedByUserId: uuid("booked_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    note: text("note"),
+    // Lejen fastlåses, når bookingen oprettes, så en senere prisændring ikke rammer en afventende booking.
+    priceOre: integer("price_ore").notNull().default(0),
+    status: bookingStatus("status").notNull(),
+    chargeId: uuid("charge_id").references(() => charges.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  },
+  (t) => [index("bookings_resource_idx").on(t.resourceId, t.startsAt), index("bookings_profile_idx").on(t.profileId)],
 );

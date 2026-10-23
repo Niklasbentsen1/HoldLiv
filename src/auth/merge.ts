@@ -27,6 +27,7 @@ const BLOCKING: [string, string][] = [
   ["saved_cards", "payer_profile_id"],
   ["expense_claims", "profile_id"],
   ["camp_signups", "profile_id"],
+  ["bookings", "profile_id"],
 ];
 
 export async function mergeProfile(db: Db, keepId: string, dupId: string): Promise<boolean> {

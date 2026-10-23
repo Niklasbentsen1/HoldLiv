@@ -72,6 +72,13 @@ import {
   cancelCamp,
   signUpForCamp,
   cancelCampSignup,
+  createResource,
+  updateResource,
+  archiveResource,
+  createBooking,
+  approveBooking,
+  rejectBooking,
+  cancelBooking,
   cancelExpense,
   decideExpense,
   markExpensePaid,
@@ -1137,4 +1144,67 @@ export async function cancelCampSignupAction(formData: FormData) {
   await attempt(back, async () => cancelCampSignup(db, ctx, str(formData, "signupId"), await deliverFromEnv()));
   revalidatePath("/camps");
   revalidatePath("/kasse/camps");
+}
+
+// --- Booking af baner, haller og udstyr ---
+
+const resourceInput = (f: FormData) => ({
+  name: str(f, "name"),
+  kind: str(f, "kind") as "court" | "hall" | "equipment",
+  description: opt(f, "description"),
+  quantity: Number(str(f, "quantity") || 1),
+  pricePerHourOre: parseKr(str(f, "price") || "0"),
+  requiresApproval: f.get("requiresApproval") === "1",
+});
+
+export async function newResource(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/booking"), () => createResource(db, ctx, str(formData, "clubId"), resourceInput(formData)));
+  revalidatePath("/kasse/booking");
+}
+
+export async function editResource(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/booking"), () => updateResource(db, ctx, str(formData, "resourceId"), resourceInput(formData)));
+  revalidatePath("/kasse/booking");
+}
+
+export async function archiveResourceAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt(kasse(formData, "/booking"), () => archiveResource(db, ctx, str(formData, "resourceId")));
+  revalidatePath("/kasse/booking");
+}
+
+export async function bookResourceAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  await attempt("/booking", () =>
+    createBooking(db, ctx, {
+      resourceId: str(formData, "resourceId"),
+      startsAt: parseLocalDateTime(str(formData, "startsAt")),
+      endsAt: parseLocalDateTime(str(formData, "endsAt")),
+      quantity: Number(str(formData, "quantity") || 1),
+      note: opt(formData, "note"),
+      teamId: opt(formData, "teamId"),
+      profileId: opt(formData, "profileId") ?? undefined,
+    }),
+  );
+  revalidatePath("/booking");
+  revalidatePath("/kasse/booking");
+}
+
+export async function decideBookingAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const id = str(formData, "bookingId");
+  await attempt(kasse(formData, "/booking"), async () =>
+    formData.get("approve") === "1" ? approveBooking(db, ctx, id, await deliverFromEnv()) : rejectBooking(db, ctx, id, await deliverFromEnv()),
+  );
+  revalidatePath("/kasse/booking");
+}
+
+export async function cancelBookingAction(formData: FormData) {
+  const { ctx } = await requireSession();
+  const back = formData.get("clubId") ? kasse(formData, "/booking") : "/booking";
+  await attempt(back, () => cancelBooking(db, ctx, str(formData, "bookingId")));
+  revalidatePath("/booking");
+  revalidatePath("/kasse/booking");
 }
